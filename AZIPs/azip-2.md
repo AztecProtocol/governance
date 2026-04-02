@@ -4,21 +4,21 @@
 
 | `azip` | `title`                | `description`                                                                                                 | `author`    | `discussions-to`                                          | `status` | `category` | `created`  |
 | ------ | ---------------------- | ------------------------------------------------------------------------------------------------------------- | ----------- | --------------------------------------------------------- | -------- | ---------- | ---------- |
-| 2    | Rollup Gating Contract | Introduces a gating contract that enforces timelocks and rate-of-change constraints on rollup owner functions | @just-mitch | https://github.com/AztecProtocol/governance/discussions/2 | Draft    | Core       | 2026-03-31 |
+| 2      | Rollup Gating Contract | Introduces a gating contract that enforces timelocks and rate-of-change constraints on rollup owner functions | @just-mitch | https://github.com/AztecProtocol/governance/discussions/2 | Draft    | Core       | 2026-03-31 |
 
 ## Abstract
 
-This proposal transfers ownership of the current rollup from direct governance control to a Gating Contract that classifies rollup owner functions into two tiers. Critical actions (escape hatch changes, ownership transfers) are subject to a 60-day timelock, giving users and operators a guaranteed long window to react and exit. Operational parameters (reward config, mana target, proving cost, ejection threshold, staking queue config) can be executed immediately after standard governance approval but are subject to per-parameter rate-of-change constraints enforced over time windows, preventing any single governance action — or sequence of actions — from making drastic changes. All future canonical rollups MUST use an equivalent gating mechanism.
+This proposal transfers ownership of the current rollup from direct governance control to a Gating Contract that classifies rollup owner functions into two tiers. Critical actions (ownership transfers) are subject to a 60-day timelock, giving users and operators a guaranteed long window to react and exit. Operational parameters (reward config, mana target, proving cost, ejection threshold, staking queue config) can be executed immediately after standard governance approval but are subject to per-parameter rate-of-change constraints enforced over time windows, preventing any single governance action — or sequence of actions — from making drastic changes. The escape hatch is fully immutable per rollup — governance cannot modify the escape hatch contract address or bond amount.
 
 ## Impacted Stakeholders
 
-**Sequencers** — Sequencers are directly affected by operational parameters gated through this contract, including reward configuration, staking queue config, slasher settings, and ejection thresholds. The rate-of-change constraints protect sequencers from sudden adverse changes to their economic conditions or forced removal from the active set. The 60-day timelock on escape hatch changes preserves their ability to evaluate and respond to changes in fallback block production.
+**Sequencers** — Sequencers are directly affected by operational parameters gated through this contract, including reward configuration, staking queue config, slasher settings, and ejection thresholds. The rate-of-change constraints protect sequencers from sudden adverse changes to their economic conditions or forced removal from the active set. The immutability of the escape hatch preserves a stable fallback block production mechanism.
 
 **Provers** — Provers are affected by changes to proving cost per mana and reward configuration. Rate constraints ensure that proving economics cannot be made unviable in a single governance action. The constraint that `rewardDistributor` must never revert protects provers from being unable to claim earned rewards.
 
 **Tokenholders** — Tokenholders benefit from the decoupling of rollup upgrade safety from ordinary governance execution delays. The shorter execution delay for non-rollup governance actions (enabled by this proposal) improves governance agility without weakening rollup protections.
 
-**App Developers** — Application developers benefit from the immutability guarantees on the escape hatch and the bounded nature of fee-related parameter changes. These constraints ensure that deployed applications cannot be rendered unusable by sudden parameter shifts that block L2 transactions, proposing, or proving.
+**App Developers** — Application developers benefit from the full immutability of the escape hatch and the bounded nature of fee-related parameter changes. These constraints ensure that deployed applications cannot be rendered unusable by sudden parameter shifts that block L2 transactions, proposing, or proving.
 
 **Infrastructure Providers (RPCs, Block Explorers, Indexers)** — Infrastructure providers benefit from the predictability that rate-constrained parameters provide. Gradual changes are easier to adapt to than sudden shifts. The 60-day timelock on critical changes gives infrastructure operators ample time to prepare for fundamental changes.
 
@@ -28,7 +28,7 @@ This proposal transfers ownership of the current rollup from direct governance c
 
 L2Beat's classification framework requires that users have roughly 30 days to react and still get an exit transaction included before a governance-triggered rollup change takes effect. If inclusion and exit can pessimistically take up to 20 days, a 60-day timelock still leaves ~40 days of real reaction time — well above the threshold.
 
-The high-level constraint is: **the escape hatch MUST be immutable from the Governance perspective**. This includes hardening all fee change validations that could block L2 transactions, proposing, or proving, as well as immutability of the AZTEC token because it is used as the bond and fee asset.
+The high-level constraint is: Governance MUST NOT be able to modify a rollup such that users no longer have that 30 day exit guarantee. This includes hardening all fee change validations that could block L2 transactions, proposing, or proving, modifications to the escape hatch, as well as immutability of the AZTEC token because it is used as the bond and fee asset.
 
 ### Current Limitations
 
@@ -40,17 +40,18 @@ Governance currently has access to configuration that can permanently affect the
 - `Slasher.slash()`: Slash any sequencer and eject them from the set
 - Unbounded configuration functions like `Rollup.setRewardConfig(booster, rewardDistributor, ...)`, `Rollup.updateManaTarget(uint.max)`, `Rollup.setProvingCostPerMana(uint.max)`, and `GSE.setProofOfPossessionGasLimit(0)`: Freeze finalization, L2 transactions, and staking respectively by using extreme values
 - `Rollup.updateStakingQueueConfig(normalFlushSizeMin=0, normalFlushSizeQuotient=max)`: Stop any new sequencers from joining the active set
-- `Rollup.updateEscapeHatch(ADDRESS)`: Use a dead or malicious address to remove the escape hatch guarantee
+- `Rollup.updateEscapeHatch(ADDRESS)`: Use a dead or malicious address to remove the escape hatch guarantee, or reduce the bond to a trivially small amount, allowing anyone to cheaply obtain escape hatch slots and DOS the system
 
 ### Decoupling Concerns
 
 The current approach of encoding rollup protection in the global governance execution delay is problematic because it couples rollup upgrade safety to the pacing of all governance actions, including sequencer withdrawals (whose delay formula includes `executionDelay`). A Gating Contract decouples these concerns:
 
-- **Critical rollup changes** that affect Stage-2 status (escape hatch, ownership) get a 60-day timelock.
+- **The escape hatch** is fully immutable per rollup — no governance modification permitted.
+- **Critical rollup changes** that affect Stage-2 status (ownership) get a 60-day timelock.
 - **Operational parameters** (rewards, fees, staking config) can be updated promptly but within bounded ranges enforced over time.
 - **Ordinary governance actions** (and sequencer exits) use a shorter execution delay without weakening rollup protection.
 
-Making rollup exits fully immutable provides all users a perpetual exit guarantee, even under comparably short governance execution delays (<30 days).
+Making the escape hatch fully immutable provides all users a perpetual exit guarantee, even under comparably short governance execution delays (<30 days).
 
 ## Specification
 
@@ -73,10 +74,13 @@ Governance approves proposal
 
 The following functions are classified as critical:
 
-| Function            | Effect                                                     | Constraint                                                                                                                                                                                            |
-| ------------------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `updateEscapeHatch` | Sets the escape hatch contract (fallback block production) | 60-day timelock. MUST be restricted to only decreasing the escape hatch bond; setting an arbitrary address MUST NOT be permitted. The escape hatch MUST be immutable from the Governance perspective. |
-| `transferOwnership` | Transfers ownership of the rollup itself                   | 60-day timelock                                                                                                                                                                                       |
+| Function            | Effect                                   | Constraint      |
+| ------------------- | ---------------------------------------- | --------------- |
+| `transferOwnership` | Transfers ownership of the rollup itself | 60-day timelock |
+
+#### Escape Hatch Immutability
+
+Updating the escape hatch in any way (changing address, bond size, configuration, etc.) MUST NOT be callable through the gating contract or any other governance mechanism. 
 
 ### Operational Tier
 
@@ -129,9 +133,9 @@ The alternative — simply increasing `executionDelay` in the Governance contrac
 
 Multicalls could bypass per-update caps by splitting a large change into many small updates within a single governance action. Expressing constraints as maximum change per time window (e.g., X% per 7 days) makes the bounds robust against any execution pattern.
 
-### Why Escape Hatch Immutability
+### Why Full Escape Hatch Immutability
 
-`updateEscapeHatch` is a vector that could remove the exit guarantee entirely by pointing to a dead or malicious address. Restricting this function to only decreasing the escape hatch bond (rather than changing the escape hatch contract address) preserves the exit guarantee while still allowing governance to make the escape hatch more accessible after the rollup is no longer canonical.
+Any governance control over the escape hatch — even if restricted to only decreasing the bond — introduces a liveness risk. If governance reduces the bond too aggressively, the cost of obtaining escape hatch slots becomes trivially low, allowing anyone to DOS the fallback block production mechanism. This renders the escape hatch unviable as a liveness guarantee precisely when it is needed most. Full immutability eliminates this vector entirely. If the escape hatch needs to be used for a rollup that is no longer canonical, governance can fund fallback block production directly rather than weakening the escape hatch's economic security.
 
 ### Why Minimum Flush Size
 
@@ -151,7 +155,7 @@ These incompatibilities are intentional and constitute the core safety improveme
 
 Test cases SHOULD cover:
 
-1. **Critical tier timelock enforcement**: A call to `updateEscapeHatch` or `transferOwnership` through the gating contract MUST NOT execute before 60 days have elapsed.
+1. **Critical tier timelock enforcement**: A call to `transferOwnership` through the gating contract MUST NOT execute before 60 days have elapsed.
 2. **Operational tier rate constraint enforcement**: A call to `setProvingCostPerMana` that exceeds the allowed change within the current time window MUST revert.
 3. **Multicall bypass prevention**: Two sequential calls to `setProvingCostPerMana` within the same time window, each within the per-update bound but together exceeding the per-time-window bound, MUST revert on the second call.
 4. **Minimum flush size enforcement**: A call to `updateStakingQueueConfig` with `normalFlushSizeMin = 0` MUST revert.
@@ -170,7 +174,7 @@ Rate-of-change constraints MUST be enforced cumulatively over time windows, not 
 
 ### Escape Hatch Integrity
 
-The escape hatch is the ultimate user exit guarantee. Any modification to the escape hatch contract address would effectively constitute a change to the trust model. The gating contract MUST ensure that `updateEscapeHatch` cannot point to a non-functional or malicious contract. The RECOMMENDED approach is to restrict this function to only decreasing the escape hatch bond amount.
+The escape hatch is the ultimate user exit guarantee. The escape hatch contract address and bond amount are immutable per rollup. This prevents both direct attacks (pointing to a malicious address) and indirect attacks (reducing the bond to enable DOS of escape hatch slots).
 
 ### Slashing Abuse
 
