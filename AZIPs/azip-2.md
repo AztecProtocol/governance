@@ -84,21 +84,21 @@ Updating the escape hatch in any way (changing address, bond size, configuration
 
 ### Operational Tier
 
-Operational-tier calls MAY be executed immediately after governance approval, but the gating contract MUST enforce per-parameter rate-of-change constraints **over time windows** (not per-update). This is critical: constraints MUST be expressed as maximum change per unit of time (e.g., X% per 7 days) so that multiple sequential governance actions (including multicalls) cannot bypass the bounds by splitting a large change into many small updates.
+Operational-tier calls MAY be executed immediately after governance approval, but the gating contract MUST enforce per-parameter rate-of-change constraints **over time windows** (not per-update). This ensures that multiple sequential governance actions (including multicalls) cannot bypass the bounds by splitting a large change into many small updates.
 
 If a proposed parameter change would cause the cumulative change within the current time window to exceed the allowed bound, the call MUST revert.
 
 The following functions are classified as operational:
 
-| Function                    | Effect                                             | Constraint                                                                                                                                                                |
-| --------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `setRewardConfig`           | Sequencer/prover reward rates and booster settings | Fee fields: cap of X% per time window. `booster` and `rewardDistributor` MUST be validated to never cause reverts, so that `setRewardConfig()` cannot block finalization. |
-| `updateManaTarget`          | Target mana per slot                               | Already constrained (can only increase); additional cap of X% per time window.                                                                                            |
-| `setProvingCostPerMana`     | Proving cost per mana unit (fee model input)       | Cap of X% per time window.                                                                                                                                                |
-| `setLocalEjectionThreshold` | Minimum stake after slashing before ejection       | Cap of X% per time window.                                                                                                                                                |
-| `updateStakingQueueConfig`  | How validators enter the active set                | Individual fields: cap of X% per time window. `normalFlushSizeMin` MUST be enforced to be greater than 0 (minimum flush size of 1).                                       |
+| Function                    | Effect                                             | Constraint                                                                                                                                                              |
+| --------------------------- | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `setRewardConfig`           | Sequencer/prover reward rates and booster settings | Fee fields: cap of +/-X% per Y days. `booster` and `rewardDistributor` MUST be validated to never cause reverts, so that `setRewardConfig()` cannot block finalization. |
+| `updateManaTarget`          | Target mana per slot                               | Already constrained (can only increase); additional cap of +/-X% per Y days.                                                                                            |
+| `setProvingCostPerMana`     | Proving cost per mana unit (fee model input)       | Cap of +/-X% per Y days.                                                                                                                                                |
+| `setLocalEjectionThreshold` | Minimum stake after slashing before ejection       | Cap of +/-X% per Y days.                                                                                                                                                |
+| `updateStakingQueueConfig`  | How validators enter the active set                | Individual fields: cap of +/-X% per Y days. `normalFlushSizeMin` MUST be enforced to be greater than 0 (minimum flush size of 1).                                       |
 
-> **Note**: The exact constraint values (the "X%" bounds and time windows) are to be determined. The intent is that no governance action or sequence of actions can, for example, set the proving cost per mana to an extreme value, making it impossible to include transactions.
+In all cases above, X and Y are 50% and 30 days respectively.
 
 ### Additional Constraints
 
@@ -128,10 +128,6 @@ The alternative — simply increasing `executionDelay` in the Governance contrac
 1. Sequencer withdrawal delays include `executionDelay` in their formula, making longer delays punitive to honest sequencers.
 2. Non-rollup governance actions (treasury operations, parameter changes to non-rollup contracts) do not need 60-day delays.
 3. A dedicated gating mechanism cleanly separates rollup safety from governance agility.
-
-### Why Rate-of-Change per Time Rather Than per Update
-
-Multicalls could bypass per-update caps by splitting a large change into many small updates within a single governance action. Expressing constraints as maximum change per time window (e.g., X% per 7 days) makes the bounds robust against any execution pattern.
 
 ### Why Full Escape Hatch Immutability
 
