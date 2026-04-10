@@ -4,7 +4,7 @@
 
 | `azip` | `title`                                                                      | `description`                                                                 | `author`    | `discussions-to`                                          | `status` | `category` | `created`  |
 | ------ | ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------- | ----------- | --------------------------------------------------------- | -------- | ---------- | ---------- |
-| 3      | Renounce ownership of v4 rollup (0xAe2001f7e21d5EcABf6234E9FDd1E76F50F74962) | Governance renounces ownership of the v4 rollup, rendering it fully immutable | @just-mitch | https://github.com/AztecProtocol/governance/discussions/3 | Draft    | Core       | 2026-04-10 |
+| 3      | Renounce ownership of v4 rollup (0xAe2001f7e21d5EcABf6234E9FDd1E76F50F74962) | Governance renounces ownership of the v4 rollup, rendering it fully immutable | @just-mitch | N/A                                                       | Draft    | Core       | 2026-04-10 |
 
 ## Abstract
 
