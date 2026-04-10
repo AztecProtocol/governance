@@ -8,7 +8,7 @@
 
 ## Abstract
 
-This proposal reduces the `executionDelay` parameter in the Governance contract from 30 days to 2 days. The 30-day delay was introduced in the Alpha payload to support L2Beat classification goals, but it does not achieve the intended classification benefit while imposing significant costs on protocol development velocity and sequencer capital efficiency. Rollup-specific protections should be handled by a dedicated gating contract with timelocks (see AZIP-2), not by inflating the global governance delay that applies to all proposals.
+This proposal reduces the `executionDelay` parameter in the Governance contract from 30 days to 2 days. The 30-day delay was introduced in the Alpha payload to support L2Beat classification goals, but it does not achieve the intended classification benefit while imposing significant costs on protocol development velocity and sequencer capital efficiency. Rollup-specific protections should be handled by a dedicated gating contract with timelocks (see AZIP-2) or renouncing ownership of the rollup contract entirely (see AZIP-3), not by inflating the global governance delay that applies to all proposals.
 
 ## Impacted Stakeholders
 
@@ -106,10 +106,6 @@ With a 2-day execution delay, stakeholders have less time to react to non-rollup
 - The full proposal lifecycle still includes voting delay (3 days) + voting duration (7 days) + execution delay (2 days) = 12 days minimum from proposal creation to execution.
 - Non-rollup governance actions do not affect users' ability to exit the rollup.
 - Stakeholders can observe and oppose proposals during the 10-day voting window.
-
-### Dependency on Gating Contract
-
-This proposal's security model depends on the Rollup Gating Contract being in place to protect critical rollup functions with dedicated timelocks. If the execution delay is reduced to 2 days *without* the gating contract, the only protection for rollup upgrades would be the governance voting window itself. This proposal SHOULD NOT be executed before the Rollup Gating Contract is deployed and the rollup's ownership is transferred to it.
 
 ### Sequencer Withdrawal Timing
 
