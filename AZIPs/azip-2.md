@@ -1,190 +1,164 @@
-# AZIP-2: Rollup Gating Contract
+# AZIP-2: Rollup Hardening Against Governance Misconfiguration
 
 ## Preamble
 
-| `azip` | `title`                | `description`                                                                                                 | `author`    | `discussions-to`                                          | `status` | `category` | `created`  |
-| ------ | ---------------------- | ------------------------------------------------------------------------------------------------------------- | ----------- | --------------------------------------------------------- | -------- | ---------- | ---------- |
-| 2      | Rollup Gating Contract | Introduces a gating contract that enforces timelocks and rate-of-change constraints on rollup owner functions | @just-mitch | https://github.com/AztecProtocol/governance/discussions/2 | Draft    | Core       | 2026-03-31 |
+| `azip` | `title`                                              | `description`                                                                                           | `author`    | `discussions-to`                                          | `status` | `category` | `created`  |
+| ------ | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------- | ----------- | --------------------------------------------------------- | -------- | ---------- | ---------- |
+| 2      | Rollup Hardening Against Governance Misconfiguration | Bakes timelocks, rate limits, and resilience into the rollup so governance cannot mute the escape hatch | @just-mitch | https://github.com/AztecProtocol/governance/discussions/2 | Draft    | Core       | 2026-03-31 |
 
 ## Abstract
 
-This proposal transfers ownership of the current rollup from direct governance control to a Gating Contract that classifies rollup owner functions into two tiers. Critical actions (ownership transfers) are subject to a 60-day timelock, giving users and operators a guaranteed long window to react and exit. Operational parameters (reward config, mana target, proving cost, ejection threshold, staking queue config) can be executed immediately after standard governance approval but are subject to per-parameter rate-of-change constraints enforced over time windows, preventing any single governance action — or sequence of actions — from making drastic changes. The escape hatch is fully immutable per rollup — governance cannot modify the escape hatch contract address or bond amount.
+This proposal hardens the rollup against governance actions that could halt finalization, price transactions out of inclusion, or revoke the user exit guarantee, by enforcing the constraints directly in the rollup contract. The escape hatch can only be set once, and is immutable thereafter. Critical-path calls into the `RewardDistributor` and `RewardBooster` are gas-capped and wrapped in `try/catch`. `setProvingCostPerMana` is gated by a 30-day cooldown, a symmetric 3/2 multiplicative step, and a floor of 2. `updateStakingQueueConfig` is validated on every call to keep flush sizes positive. `setSlasher` is replaced by a 60-day queue/finalize flow, and `setLocalEjectionThreshold` is removed.
 
 ## Impacted Stakeholders
 
-**Sequencers** — Sequencers are directly affected by operational parameters gated through this contract, including reward configuration, staking queue config, slasher settings, and ejection thresholds. The rate-of-change constraints protect sequencers from sudden adverse changes to their economic conditions or forced removal from the active set. The immutability of the escape hatch preserves a stable fallback block production mechanism.
-
-**Provers** — Provers are affected by changes to proving cost per mana and reward configuration. Rate constraints ensure that proving economics cannot be made unviable in a single governance action. The constraint that `rewardDistributor` must never revert protects provers from being unable to claim earned rewards.
-
-**Tokenholders** — Tokenholders benefit from the decoupling of rollup upgrade safety from ordinary governance execution delays. The shorter execution delay for non-rollup governance actions (enabled by this proposal) improves governance agility without weakening rollup protections.
-
-**App Developers** — Application developers benefit from the full immutability of the escape hatch and the bounded nature of fee-related parameter changes. These constraints ensure that deployed applications cannot be rendered unusable by sudden parameter shifts that block L2 transactions, proposing, or proving.
-
-**Infrastructure Providers (RPCs, Block Explorers, Indexers)** — Infrastructure providers benefit from the predictability that rate-constrained parameters provide. Gradual changes are easier to adapt to than sudden shifts. The 60-day timelock on critical changes gives infrastructure operators ample time to prepare for fundamental changes.
+- **Sequencers** — The slasher can no longer be swapped instantly; validators who object to a queued slasher have time to exit. The ejection floor cannot be raised out from under them. The flush-size invariants keep the queue admitting new sequencers.
+- **Provers** — A broken or malicious `RewardDistributor` / `RewardBooster` can no longer block `submitEpochRootProof`; failures surface as events and epochs still finalize. `provingCostPerMana` cannot move to extreme values instantly.
+- **Tokenholders** — Retain full upgrade authority, but lose the ability to issue a single transaction that bricks the rollup or revokes the exit guarantee.
+- **App Developers** — Get a stable, for-life exit guarantee once the escape hatch is set, and a fee model that cannot be priced out of existence in a single vote.
+- **Infrastructure Providers** — Reward-endpoint failures surface as `CheckpointClaimFailed` / `BoosterUpdateFailed` events instead of transaction reverts. Slasher changes are announced 60 days in advance via `PendingSlasherQueued`.
 
 ## Motivation
 
-### Stage-2 Requirements
-
-L2Beat's classification framework requires that users have roughly 30 days to react and still get an exit transaction included before a governance-triggered rollup change takes effect. If inclusion and exit can pessimistically take up to 20 days, a 60-day timelock still leaves ~40 days of real reaction time — well above the threshold.
-
-The high-level constraint is: Governance MUST NOT be able to modify a rollup such that users no longer have that 30 day exit guarantee. This includes hardening all fee change validations that could block L2 transactions, proposing, or proving, modifications to the escape hatch, as well as immutability of the AZTEC token because it is used as the bond and fee asset.
-
 ### Current Limitations
 
-The currently deployed rollup system combines an unnecessarily long governance execution delay with practical mutability vectors in the rollup smart contract. This creates sluggish upgrades on the one hand and short exit windows for users on the other.
+A single approved Governance proposal on today's rollup can:
 
-Governance currently has access to configuration that can permanently affect the liveness of the rollup:
+- `updateEscapeHatch(ADDRESS)` — delete the exit guarantee outright.
+- `setRewardConfig(booster, rewardDistributor, ...)` — point at a reverting endpoint, blocking `submitEpochRootProof`.
+- `setProvingCostPerMana(uint.max)` — price the fee model out of usability.
+- `updateStakingQueueConfig(normalFlushSizeMin=0, …)` — close the validator queue.
+- `setSlasher()` / `setLocalEjectionThreshold()` — eject arbitrary validators.
 
-- `Rollup.setSlasher()` and `Rollup.setLocalEjectionThreshold()`: Set a malicious slasher contract and/or ejection threshold, allowing slashing and ejection of any sequencer
-- `Slasher.slash()`: Slash any sequencer and eject them from the set
-- Unbounded configuration functions like `Rollup.setRewardConfig(booster, rewardDistributor, ...)`, `Rollup.updateManaTarget(uint.max)`, `Rollup.setProvingCostPerMana(uint.max)`, and `GSE.setProofOfPossessionGasLimit(0)`: Freeze finalization, L2 transactions, and staking respectively by using extreme values
-- `Rollup.updateStakingQueueConfig(normalFlushSizeMin=0, normalFlushSizeQuotient=max)`: Stop any new sequencers from joining the active set
-- `Rollup.updateEscapeHatch(ADDRESS)`: Use a dead or malicious address to remove the escape hatch guarantee, or reduce the bond to a trivially small amount, allowing anyone to cheaply obtain escape hatch slots and DOS the system
+To give users a guarantee that they have at least a 30 day window to exit at any time via the escape hatch, the first 3 issues must be rectified. Constraining the other two afford meaningful practical assurances to users and node operators.
 
-### Decoupling Concerns
-
-The current approach of encoding rollup protection in the global governance execution delay is problematic because it couples rollup upgrade safety to the pacing of all governance actions, including sequencer withdrawals (whose delay formula includes `executionDelay`). A Gating Contract decouples these concerns:
-
-- **The escape hatch** is fully immutable per rollup — no governance modification permitted.
-- **Critical rollup changes** that affect Stage-2 status (ownership) get a 60-day timelock.
-- **Operational parameters** (rewards, fees, staking config) can be updated promptly but within bounded ranges enforced over time.
-- **Ordinary governance actions** (and sequencer exits) use a shorter execution delay without weakening rollup protection.
-
-Making the escape hatch fully immutable provides all users a perpetual exit guarantee, even under comparably short governance execution delays (<30 days).
+A "stage-2" rollup could almost certainly be achieved by putting a ~60 day timelock in front of all of these operations, but that would be suboptimal: it is conceivable that Governance might honestly want to update the RewardDistributor or provingCostPerMana with little delay. Therefore, we address each of these items in turn.
 
 ## Specification
 
 The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in RFC 2119 and RFC 8174.
 
-### Gating Contract Deployment
+### Escape Hatch Immutability (One-shot Set)
 
-A gating contract SHALL be deployed that becomes the owner of the current rollup. All future canonical rollups SHALL be owned by an equivalent gating contract. The gating contract MUST be configured such that only governance (via approved proposals) can trigger either tier, and no actor can bypass the 60-day delay for critical-tier calls or the rate constraints for operational-tier calls.
+`updateEscapeHatch(address)` SHALL be renamed `setEscapeHatch(address)` and made "one-shot":
 
-### Critical Tier
+- MUST revert with `ValidatorSelection__EscapeHatchCannotBeZero` if called with the zero address.
+- MUST revert with `ValidatorSelection__EscapeHatchAlreadySet` if an escape hatch was previously registered.
+- SHALL write the address into `escapeHatchCheckpoints` keyed to the start of the next epoch, so the registration never retroactively affects the current epoch.
+- No path — owner-gated, governance-gated, or otherwise — MAY remove, replace, or modify the address after it is set. A rollup that wants no escape hatch simply never calls `setEscapeHatch`.
 
-Critical-tier calls MUST be routed through a timelock with a minimum delay of 60 days (5,184,000 seconds). The flow for critical actions:
+The `EscapeHatchUpdated` event SHALL be renamed `EscapeHatchSet`.
 
-```
-Governance approves proposal
-    → Proposal executes, scheduling action on timelock
-    → 60-day timelock delay
-    → Action executed on rollup
-```
+### Reward Endpoint Resilience (try/catch)
 
-The following functions are classified as critical:
+All external calls from `RewardLib.handleRewardsAndFees` into the `RewardDistributor` and `RewardBooster` MUST be gas-capped and wrapped in `try/catch`:
 
-| Function            | Effect                                   | Constraint      |
-| ------------------- | ---------------------------------------- | --------------- |
-| `transferOwnership` | Transfers ownership of the rollup itself | 60-day timelock |
+1. `distributor.canonicalRollup()` — `CANONICAL_ROLLUP_GAS = 25_000`. On revert, emit `CheckpointClaimFailed(distributor, requested)` and treat the epoch as having zero claimable checkpoint rewards.
+2. `distributor.claim(address(this), amount)` — `CLAIM_GAS = 50_000`. Same failure handling as (1).
+3. `booster.updateAndGetShares(prover)` — `BOOSTER_UPDATE_GAS = 45_000`. On revert, emit `BoosterUpdateFailed(prover)` and credit the prover with `FALLBACK_BOOSTER_SHARES = 1`. The sentinel MUST be non-zero so that during a booster outage every submitter still receives an equal fraction of the epoch's rewards; a zero fallback would drive `summedShares` to 0 and trip the `shares > 0` short-circuit in `claimProverRewards`, zeroing out prover rewards for an epoch that otherwise finalized. It MUST be minimal so a failing booster cannot materially inflate a prover's reward share. Preserving the `$sr.shares[prover] == 0` duplicate-submission guard is a side benefit.
 
-#### Escape Hatch Immutability
+Note: the gas caps are sized against honest-path cold-call measurements to those functions as they exist today with ~1.5x headroom.
 
-Updating the escape hatch in any way (changing address, bond size, configuration, etc.) MUST NOT be callable through the gating contract or any other governance mechanism. 
+### `provingCostPerMana` Rate Limit
 
-### Operational Tier
+`setProvingCostPerMana(uint256 v)` MUST enforce:
 
-Operational-tier calls MAY be executed immediately after governance approval, but the gating contract MUST enforce per-parameter rate-of-change constraints **over time windows** (not per-update). This ensures that multiple sequential governance actions (including multicalls) cannot bypass the bounds by splitting a large change into many small updates.
+1. **Floor**: `v >= MIN_PROVING_COST_PER_MANA = 2`. Values below 2 degenerate the step-ratio algebra. `FeeLib.initialize` MUST enforce the same floor.
+2. **Cooldown**: revert if `block.timestamp < provingCostLastUpdate + PROVING_COST_UPDATE_INTERVAL` (30 days). Waived when `provingCostLastUpdate == 0` so the first post-init update can land.
+3. **Symmetric multiplicative step**: revert unless `v * 2 <= current * 3 && v * 3 >= current * 2` (i.e. 3/2 in either direction).
 
-If a proposed parameter change would cause the cumulative change within the current time window to exceed the allowed bound, the call MUST revert.
+Combined, this caps cumulative change at ~10× over ~170 days and ~100× over ~340 days. The `FeeStore` struct gains `uint64 provingCostLastUpdate`. New errors: `FeeLib__ProvingCostBelowFloor`, `FeeLib__ProvingCostCooldown`, `FeeLib__ProvingCostStepExceeded`.
 
-The following functions are classified as operational:
+### Staking Queue Flush-Size Invariants
 
-| Function                    | Effect                                             | Constraint                                                                                                                                                              |
-| --------------------------- | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `setRewardConfig`           | Sequencer/prover reward rates and booster settings | Fee fields: cap of +/-X% per Y days. `booster` and `rewardDistributor` MUST be validated to never cause reverts, so that `setRewardConfig()` cannot block finalization. |
-| `updateManaTarget`          | Target mana per slot                               | Already constrained (can only increase); additional cap of +/-X% per Y days.                                                                                            |
-| `setProvingCostPerMana`     | Proving cost per mana unit (fee model input)       | Cap of +/-X% per Y days.                                                                                                                                                |
-| `setLocalEjectionThreshold` | Minimum stake after slashing before ejection       | Cap of +/-X% per Y days.                                                                                                                                                |
-| `updateStakingQueueConfig`  | How validators enter the active set                | Individual fields: cap of +/-X% per Y days. `normalFlushSizeMin` MUST be enforced to be greater than 0 (minimum flush size of 1).                                       |
+The checks `normalFlushSizeMin > 0` and `normalFlushSizeQuotient > 0` SHALL move into `StakingLib.assertValidQueueConfig(StakingQueueConfig)` and be called from both `RollupCore`'s constructor and `StakingLib.updateStakingQueueConfig`. This prevents governance from ever closing the queue (`normalFlushSizeMin = 0`) or causing division by zero in `getEntryQueueFlushSize`.
 
-In all cases above, X and Y are 50% and 30 days respectively.
+### Slasher 60-Day Queue/Finalize Flow
 
-### Additional Constraints
+`setSlasher(address)` SHALL be replaced with:
 
-#### Slashing and Ejection
+- `queueSetSlasher(address _slasher)` — owner-gated. Sets `pendingSlasher` and `pendingSlasherReadyAt = block.timestamp + SLASHER_EXECUTION_DELAY` (60 days). Overwrites any existing pending value and resets the timer. Emits `PendingSlasherQueued`.
+- `cancelSetSlasher()` — owner-gated. Clears the pending slasher or reverts with `Staking__NoPendingSlasher`. Emits `PendingSlasherCancelled`.
+- `finalizeSetSlasher()` — **permissionless**. Reverts with `Staking__NoPendingSlasher` or `Staking__SlasherNotReady(readyAt)`. On success, applies the change and emits `SlasherUpdated`.
 
-`setSlasher()` MUST be removed from the rollup contract so that governance cannot use slashing to remove all sequencers from the active set in a short period. Further, Governance MUST be removed as an actor that can unilaterally call `Slasher.slash()`.
+The delay is permissionless so that Governance doesn't need to be relied on to effect the queued change.
 
-#### Fee Validation Hardening
+`IStakingCore` loses `setSlasher` and the `LocalEjectionThresholdUpdated` event, and gains the three new selectors plus `PendingSlasherQueued` / `PendingSlasherCancelled`. `IStaking` gains `getPendingSlasher()` and `getSlasherExecutionDelay()` readers.
 
-All fee-related parameter changes MUST be validated such that they cannot block:
-- L2 transaction inclusion
-- Block proposing
-- Block proving
+### `setLocalEjectionThreshold` Removal
 
-Parameters that feed into the fee model (`setProvingCostPerMana`, `updateManaTarget`, fee fields in `setRewardConfig`) MUST have their bounds set such that even at the maximum allowed value after a rate-constrained update, the rollup remains functional.
+`setLocalEjectionThreshold(uint256)` SHALL be removed from `RollupCore`, `IStakingCore`, `ValidatorOperationsExtLib`, and `StakingLib`. `localEjectionThreshold` remains on `StakingStorage` (set in `StakingLib.initialize`) and readable via `getLocalEjectionThreshold()`; there is no post-deployment mutation path. A rollup that needs a different threshold must be redeployed. This eliminates the "raise the threshold to retroactively arm ejections" attack surface entirely.
+
+### Functions Deliberately Unchanged
+
+`setRewardConfig`, `updateManaTarget`, `updateStakingQueueConfig` (beyond flush-size invariants), and `transferOwnership` retain their existing owner-gated semantics. Their worst-case outcomes no longer mute the escape hatch:
+
+- `setRewardConfig` rotations to a reverting endpoint are absorbed by the `try/catch` above.
+- `updateManaTarget` is up-only and unbounded, but raising it only drives per-block cost toward `provingCostPerMana × manaUsed` — which is already rate-limited — and does not block L2→L1 messaging.
+- `updateStakingQueueConfig` must keep `normalFlushSizeMin > 0` and `normalFlushSizeQuotient > 0`.
 
 ### No Change to Voting Mechanics
 
-This proposal does not modify voting thresholds, quorum requirements, or any other governance approval mechanism.
+Voting thresholds, quorum requirements, and governance approval flow are unchanged.
 
 ## Rationale
 
-### Why a Gating Contract Rather Than Longer Governance Delays
-
-The alternative — simply increasing `executionDelay` in the Governance contract — would apply the same delay to all governance actions. This is undesirable because:
-
-1. Sequencer withdrawal delays include `executionDelay` in their formula, making longer delays punitive to honest sequencers.
-2. Non-rollup governance actions (treasury operations, parameter changes to non-rollup contracts) do not need 60-day delays.
-3. A dedicated gating mechanism cleanly separates rollup safety from governance agility.
-
 ### Why Full Escape Hatch Immutability
 
-Any governance control over the escape hatch — even if restricted to only decreasing the bond — introduces a liveness risk. If governance reduces the bond too aggressively, the cost of obtaining escape hatch slots becomes trivially low, allowing anyone to DOS the fallback block production mechanism. This renders the escape hatch unviable as a liveness guarantee precisely when it is needed most. Full immutability eliminates this vector entirely. If the escape hatch needs to be used for a rollup that is no longer canonical, governance can fund fallback block production directly rather than weakening the escape hatch's economic security.
+Any governance control over the escape hatch — even restricted to "can only lower the bond" — introduces a DOS vector: too-low a bond makes escape-hatch slots trivially sybillable exactly when they matter most. Full immutability eliminates this and matches the Stages Framework convention that an escape hatch "owes to its name" to be immutable.
 
-### Why Minimum Flush Size
+### What Governance Can Still Do
 
-Without a floor on `normalFlushSizeMin`, governance could set it to 0, preventing any new sequencers from entering the active set. A minimum of 1 ensures the staking queue always processes at least one validator per flush cycle.
+After this proposal, malicious governance's residual surface is:
+
+- Raise `provingCostPerMana` gradually, bounded by the 3/2 step per 30 days — always slower than the exit guarantee.
+- Raise `manaTarget` (bounded in effect by the proving-cost rate limit — cannot mute the hatch).
+- Rotate the reward distributor/booster to a reverting endpoint (absorbed by `try/catch`).
+- Queue a slasher change (applies only after 60 days, longer than the ~38-day validator withdrawal window).
+- Adjust the share of rewards that go to sequencers versus provers such that it is not economical for one of those actors to participate.
+- Adjust the checkpoint reward to the same effect.
+
+No residual action mutes the escape hatch.
+
+### Why a Cooldown + Step Instead of a Rolling Window
+
+A rolling window bounds cumulative change by re-anchoring to the value at window start; a cooldown-plus-step bounds it by a per-update ratio plus a minimum inter-update delay. For a single parameter, the latter is simpler (one timestamp of state, one revert path) and harder to get wrong than window-position/step interactions.
 
 ## Backwards Compatibility
 
-This proposal introduces backwards incompatibilities:
-
-1. **Rollup ownership transfer**: The current rollup's owner changes from Governance to the Gating Contract. Any existing governance proposals that directly call rollup owner functions will need to target the Gating Contract instead.
-2. **Execution timing**: Critical-tier actions will take 60 days longer to execute than they do today. Governance proposals involving these actions must account for the additional delay.
-3. **Parameter change limits**: Operational parameters can no longer be changed by arbitrary amounts. Any pending or planned governance proposals that would exceed rate-of-change bounds will need to be split into multiple proposals spaced over time.
-
-These incompatibilities are intentional and constitute the core safety improvement of this proposal.
+1. **ABI**: `setSlasher` → `queueSetSlasher` / `cancelSetSlasher` / `finalizeSetSlasher`. `setLocalEjectionThreshold` removed. `updateEscapeHatch` → `setEscapeHatch`. `EscapeHatchUpdated` → `EscapeHatchSet`. `LocalEjectionThresholdUpdated` removed. New events `PendingSlasherQueued`, `PendingSlasherCancelled`.
+2. **Timing**: Slasher replacements take effect 60 days after queueing.
+3. **Parameter constraints**: `setProvingCostPerMana` reverts on cooldown violation, step violation, or `v < 2`. `updateStakingQueueConfig` reverts on zero flush fields (matching the existing constructor invariant).
+4. **Escape hatch finality**: `setEscapeHatch` is final for the life of the rollup; deployers must verify the address before calling.
 
 ## Test Cases
 
-Test cases SHOULD cover:
-
-1. **Critical tier timelock enforcement**: A call to `transferOwnership` through the gating contract MUST NOT execute before 60 days have elapsed.
-2. **Operational tier rate constraint enforcement**: A call to `setProvingCostPerMana` that exceeds the allowed change within the current time window MUST revert.
-3. **Multicall bypass prevention**: Two sequential calls to `setProvingCostPerMana` within the same time window, each within the per-update bound but together exceeding the per-time-window bound, MUST revert on the second call.
-4. **Minimum flush size enforcement**: A call to `updateStakingQueueConfig` with `normalFlushSizeMin = 0` MUST revert.
-5. **Finalization safety**: Setting `rewardDistributor` to an address whose calls revert MUST be rejected by the gating contract validation.
-6. **Access control**: Calls to the gating contract from any address other than Governance MUST revert.
+1. **Escape hatch one-shot**: `setEscapeHatch(nonZero)` succeeds once; second call reverts with `EscapeHatchAlreadySet`; zero-address call reverts with `EscapeHatchCannotBeZero`.
+2. **Reward distributor / booster revert tolerance**: A reverting `canonicalRollup`, `claim`, or `updateAndGetShares` MUST NOT cause `submitEpochRootProof` to revert; the appropriate event fires and the fallback value is used.
+3. **Gas-cap isolation**: An endpoint that burns unbounded gas MUST be cut off at the cap without consuming the proof submitter's remaining budget.
+4. **Proving cost floor / step / cooldown**: `setProvingCostPerMana(0|1)` reverts with `ProvingCostBelowFloor`; from 1000, setting 1501 or 666 reverts with `ProvingCostStepExceeded`, while 1500 / 667 succeed; the first post-init update lands immediately, a second within 30 days reverts with `ProvingCostCooldown`.
+5. **Flush-size invariants on update**: `updateStakingQueueConfig` with zero `normalFlushSizeMin` or `normalFlushSizeQuotient` reverts.
+6. **Slasher queue flow**: `queueSetSlasher` / `cancelSetSlasher` are owner-only; `finalizeSetSlasher` is permissionless, reverts before 60 days with `SlasherNotReady`, and applies the change after. Queue overwrite resets the timer; cancel without a pending queue reverts with `NoPendingSlasher`.
+7. **`setLocalEjectionThreshold` removed**: selector is not reachable on the deployed rollup.
 
 ## Security Considerations
 
-### Timelock Bypass
+### Reward Call Resilience vs Correctness
 
-The gating contract MUST NOT have any administrative functions that allow bypassing the 60-day timelock for critical-tier calls. There MUST be no emergency override, multisig backdoor, or upgrade mechanism that could circumvent the delay. The gating contract itself SHOULD be immutable (non-upgradeable).
+Wrapping reward-endpoint calls in `try/catch` trades per-epoch reward correctness for system liveness. Fallbacks are conservative (zero checkpoint reward, one booster share) so provers are never over-credited. Operators MUST treat `CheckpointClaimFailed` / `BoosterUpdateFailed` as signals to rotate the endpoint; the rollup does not self-heal. Gas caps (25k / 50k / 45k) must remain conservatively above honest-path cold-call cost — under-sized caps brick the honest path, over-sized caps let a malicious endpoint consume the rest of the transaction's gas.
 
-### Rate Constraint Circumvention
+### Rate Limit and Queue Bypass
 
-Rate-of-change constraints MUST be enforced cumulatively over time windows, not per-call. The contract MUST track the cumulative change to each parameter within rolling time windows and reject any update that would cause the cumulative change to exceed the bound. This prevents circumvention via multicalls, multiple proposals, or any other batching mechanism.
+The cooldown check anchors on `provingCostLastUpdate`, so multicalls and repeated proposals within a window MUST revert. The step bound is symmetric so governance cannot deflate proving cost to the floor in one step either. The slasher queue resets its timer on overwrite, so governance cannot accrue "credit" from a cancelled queue.
 
-### Escape Hatch Integrity
+### Escape Hatch Finality
 
-The escape hatch is the ultimate user exit guarantee. The escape hatch contract address and bond amount are immutable per rollup. This prevents both direct attacks (pointing to a malicious address) and indirect attacks (reducing the bond to enable DOS of escape hatch slots).
+The one-shot `setEscapeHatch` is load-bearing for the exit guarantee and cannot be reversed. A misconfigured first call is unrecoverable — deployers MUST verify the address and implementation before calling.
 
-### Slashing Abuse
+### Future Rollup Versions
 
-Through `setSlasher()` or `Slasher.slash()`, governance could remove all sequencers from the active set, compromising liveness.
-
-### Gating Contract as Single Point of Control
-
-The gating contract becomes the sole owner of the rollup. Its correctness is therefore critical. The contract MUST undergo thorough security auditing before deployment. A bug in the gating contract could either lock out legitimate governance actions or fail to enforce the intended constraints.
-
-### Interaction with Future Rollup Versions
-
-When a new rollup version is deployed via `Registry.addRollup()`, it MUST be deployed with its own gating contract instance. The gating contract parameters (timelock duration, rate bounds) for new rollups SHOULD be at least as restrictive as those specified in this AZIP.
+New rollups deployed via `Registry.addRollup()` MUST carry the same or stricter versions of these constraints. Relaxing any of them on a future rollup would weaken the exit guarantee for its users.
 
 ## Copyright Waiver
 
 Copyright and related rights waived via [CC0](/LICENSE).
-
