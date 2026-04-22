@@ -2,21 +2,21 @@
 
 ## Preamble
 
-| `azip` | `title`                                              | `description`                                                                                           | `author`    | `discussions-to`                                          | `status` | `category` | `created`  |
-| ------ | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------- | ----------- | --------------------------------------------------------- | -------- | ---------- | ---------- |
-| 2      | Rollup Hardening Against Governance Misconfiguration | Bakes timelocks, rate limits, and resilience into the rollup so governance cannot mute the escape hatch | @just-mitch | https://github.com/AztecProtocol/governance/discussions/2 | Draft    | Core       | 2026-03-31 |
+| `azip` | `title`                                              | `description`                                                                                             | `author`    | `discussions-to`                                          | `status` | `category` | `created`  |
+| ------ | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ----------- | --------------------------------------------------------- | -------- | ---------- | ---------- |
+| 2      | Rollup Hardening Against Governance Misconfiguration | Bakes timelocks, rate limits, and immutability into the rollup so governance cannot mute the escape hatch | @just-mitch | https://github.com/AztecProtocol/governance/discussions/2 | Draft    | Core       | 2026-03-31 |
 
 ## Abstract
 
-This proposal hardens the rollup against governance actions that could halt finalization, price transactions out of inclusion, or revoke the user exit guarantee, by enforcing the constraints directly in the rollup contract. The escape hatch can only be set once, and is immutable thereafter. Critical-path calls into the `RewardDistributor` and `RewardBooster` are gas-capped and wrapped in `try/catch`. `setProvingCostPerMana` is gated by a 30-day cooldown, a symmetric 3/2 multiplicative step, and a floor of 2. `updateStakingQueueConfig` is validated on every call to keep flush sizes positive. `setSlasher` is replaced by a 60-day queue/finalize flow, and `setLocalEjectionThreshold` is removed.
+This proposal hardens the rollup against governance actions that could halt finalization, price transactions out of inclusion, or revoke the user exit guarantee, by enforcing the constraints directly in the rollup contract. The escape hatch can only be set once, and is immutable thereafter. The `RewardDistributor` and `RewardBooster` addresses are likewise immutable post-deployment, and the `RewardDistributor` gains a permissionless path so old (non-canonical) rollups can still receive pre-funded checkpoint rewards. `setProvingCostPerMana` is rate-limited by a 30-day cooldown and a bounded per-update step. `updateStakingQueueConfig` is validated on every call to keep flush sizes positive. `setSlasher` is replaced by a 60-day queue/finalize flow, and `setLocalEjectionThreshold` is removed.
 
 ## Impacted Stakeholders
 
 - **Sequencers** — The slasher can no longer be swapped instantly; validators who object to a queued slasher have time to exit. The ejection floor cannot be raised out from under them. The flush-size invariants keep the queue admitting new sequencers.
-- **Provers** — A broken or malicious `RewardDistributor` / `RewardBooster` can no longer block `submitEpochRootProof`; failures surface as events and epochs still finalize. `provingCostPerMana` cannot move to extreme values instantly.
+- **Provers** — The `RewardDistributor` and `RewardBooster` addresses are fixed for the life of the rollup, so governance cannot rotate them to endpoints that block, starve, or corrupt `submitEpochRootProof`. Provers on a rollup that is no longer canonical can still be rewarded via pre-funded subsidies held in the `RewardDistributor`. `provingCostPerMana` cannot move to extreme values instantly.
 - **Tokenholders** — Retain full upgrade authority, but lose the ability to issue a single transaction that bricks the rollup or revokes the exit guarantee.
 - **App Developers** — Get a stable, for-life exit guarantee once the escape hatch is set, and a fee model that cannot be priced out of existence in a single vote.
-- **Infrastructure Providers** — Reward-endpoint failures surface as `CheckpointClaimFailed` / `BoosterUpdateFailed` events instead of transaction reverts. Slasher changes are announced 60 days in advance via `PendingSlasherQueued`.
+- **Infrastructure Providers** — Reward-endpoint addresses are fixed at deployment and cannot be rotated by governance. Slasher changes are announced 60 days in advance via `PendingSlasherQueued`.
 
 ## Motivation
 
@@ -25,14 +25,14 @@ This proposal hardens the rollup against governance actions that could halt fina
 A single approved Governance proposal on today's rollup can:
 
 - `updateEscapeHatch(ADDRESS)` — delete the exit guarantee outright.
-- `setRewardConfig(booster, rewardDistributor, ...)` — point at a reverting endpoint, blocking `submitEpochRootProof`.
+- `setRewardConfig(booster, rewardDistributor, ...)` — point at an adversarial endpoint that reverts, returns overflowing values, return-bombs, or re-enters; any of these block `submitEpochRootProof`.
 - `setProvingCostPerMana(uint.max)` — price the fee model out of usability.
 - `updateStakingQueueConfig(normalFlushSizeMin=0, …)` — close the validator queue.
 - `setSlasher()` / `setLocalEjectionThreshold()` — eject arbitrary validators.
 
 To give users a guarantee that they have at least a 30 day window to exit at any time via the escape hatch, the first 3 issues must be rectified. Constraining the other two afford meaningful practical assurances to users and node operators.
 
-A "stage-2" rollup could almost certainly be achieved by putting a ~60 day timelock in front of all of these operations, but that would be suboptimal: it is conceivable that Governance might honestly want to update the RewardDistributor or provingCostPerMana with little delay. Therefore, we address each of these items in turn.
+A "stage-2" rollup could almost certainly be achieved by putting a ~60 day timelock in front of all of these operations, but that would be suboptimal: it is conceivable that Governance might honestly want to update `provingCostPerMana` with little delay, and the reward-endpoint addresses do not need to be mutable at all once the `RewardDistributor` itself supports subsidizing non-canonical rollups. Therefore, we address each of these items in turn.
 
 ## Specification
 
@@ -49,15 +49,22 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 
 The `EscapeHatchUpdated` event SHALL be renamed `EscapeHatchSet`.
 
-### Reward Endpoint Resilience (try/catch)
+### Reward Distributor and Booster Immutability
 
-All external calls from `RewardLib.handleRewardsAndFees` into the `RewardDistributor` and `RewardBooster` MUST be gas-capped and wrapped in `try/catch`:
+The `rewardDistributor` and `rewardBooster` address fields of `RollupStore.config` MUST be set once — in the constructor or `initialize` — and MUST NOT be mutable post-deployment. `setRewardConfig` SHALL be modified to no longer accept or write these two addresses; the remaining reward parameters (sequencer/prover split, checkpoint reward, etc.) retain their existing owner-gated semantics. Rotating either address requires redeploying the rollup via `Registry.addRollup`.
 
-1. `distributor.canonicalRollup()` — `CANONICAL_ROLLUP_GAS = 25_000`. On revert, emit `CheckpointClaimFailed(distributor, requested)` and treat the epoch as having zero claimable checkpoint rewards.
-2. `distributor.claim(address(this), amount)` — `CLAIM_GAS = 50_000`. Same failure handling as (1).
-3. `booster.updateAndGetShares(prover)` — `BOOSTER_UPDATE_GAS = 45_000`. On revert, emit `BoosterUpdateFailed(prover)` and credit the prover with `FALLBACK_BOOSTER_SHARES = 1`. The sentinel MUST be non-zero so that during a booster outage every submitter still receives an equal fraction of the epoch's rewards; a zero fallback would drive `summedShares` to 0 and trip the `shares > 0` short-circuit in `claimProverRewards`, zeroing out prover rewards for an epoch that otherwise finalized. It MUST be minimal so a failing booster cannot materially inflate a prover's reward share. Preserving the `$sr.shares[prover] == 0` duplicate-submission guard is a side benefit.
+### Old Rollup Subsidy Path
 
-Note: the gas caps are sized against honest-path cold-call measurements to those functions as they exist today with ~1.5x headroom.
+`IRewardDistributor` SHALL gain two new functions:
+
+- `availableTo(address rollup) external view returns (uint256)` — returns `ASSET.balanceOf(distributor) - aggregateDebt` when `rollup == canonicalRollup()`, and `specificOld[rollup]` otherwise.
+- `subsidizeOld(address rollup, uint256 amount) external` — permissionless. Pulls `amount` of `ASSET` from the caller, increments `specificOld[rollup]` and `aggregateDebt` by `amount`.
+
+`RewardDistributor.claim(address to, uint256 amount)` SHALL authorize the caller by `amount <= availableTo(msg.sender)` rather than `msg.sender == canonicalRollup()`. When `msg.sender != canonicalRollup()`, `claim` MUST decrement `specificOld[msg.sender]` and `aggregateDebt` by `amount` before transferring. `recover(asset, to, amount)`, when `asset == ASSET`, MUST leave `availableTo(canonicalRollup())` non-negative so the owner cannot drain reserved subsidy balances.
+
+`RewardLib.handleRewardsAndFees` SHALL read `distributor.availableTo(address(this))` and clamp `amountToClaim` to that value before calling `distributor.claim(address(this), amountToClaim)`. 
+
+Any funds transferred to the `RewardDistributor` without invoking `subsidizeOld` accrue to the canonical rollup via `balanceOf − aggregateDebt`, preserving the existing "mint/airdrop into the distributor" funding path.
 
 ### `provingCostPerMana` Rate Limit
 
@@ -91,9 +98,8 @@ The delay is permissionless so that Governance doesn't need to be relied on to e
 
 ### Functions Deliberately Unchanged
 
-`setRewardConfig`, `updateManaTarget`, `updateStakingQueueConfig` (beyond flush-size invariants), and `transferOwnership` retain their existing owner-gated semantics. Their worst-case outcomes no longer mute the escape hatch:
+`setRewardConfig` (for the non-address reward parameters), `updateManaTarget`, `updateStakingQueueConfig` (beyond flush-size invariants), and `transferOwnership` retain their existing owner-gated semantics. Their worst-case outcomes no longer mute the escape hatch:
 
-- `setRewardConfig` rotations to a reverting endpoint are absorbed by the `try/catch` above.
 - `updateManaTarget` is up-only and unbounded, but raising it only drives per-block cost toward `provingCostPerMana × manaUsed` — which is already rate-limited — and does not block L2→L1 messaging.
 - `updateStakingQueueConfig` must keep `normalFlushSizeMin > 0` and `normalFlushSizeQuotient > 0`.
 
@@ -107,13 +113,23 @@ Voting thresholds, quorum requirements, and governance approval flow are unchang
 
 Any governance control over the escape hatch — even restricted to "can only lower the bond" — introduces a DOS vector: too-low a bond makes escape-hatch slots trivially sybillable exactly when they matter most. Full immutability eliminates this and matches the Stages Framework convention that an escape hatch "owes to its name" to be immutable.
 
+### Why Immutable Reward Endpoints Over try/catch
+
+An earlier draft wrapped every `RewardDistributor` / `RewardBooster` call in `try/catch` with a gas cap. That approach only defends against reverts at the call boundary. It does not defend against:
+
+- An endpoint returning valid but adversarial values (e.g. `type(uint256).max` from `updateAndGetShares`) that overflow the rollup's own accounting and revert the outer transaction after `try/catch` has already succeeded.
+- Return-bomb attacks that burn gas copying oversized return-data into the caller's memory.
+- Future gas repricings that invalidate hand-tuned gas caps and either brick the honest path (cap too low) or let a malicious endpoint consume the submitter's remaining gas (cap too high).
+- Re-entrancy or state-mutation side effects that `try/catch` does not restrain.
+
+Fixing the addresses at deployment retires the entire class. The only legitimate use case for mutability — keeping an old rollup's provers and sequencers rewarded after a new canonical is promoted — is served by the old rollup subsidy path on the distributor itself, which requires no governance action (`subsidizeOld` is permissionless).
+
 ### What Governance Can Still Do
 
 After this proposal, malicious governance's residual surface is:
 
 - Raise `provingCostPerMana` gradually, bounded by the 3/2 step per 30 days — always slower than the exit guarantee.
 - Raise `manaTarget` (bounded in effect by the proving-cost rate limit — cannot mute the hatch).
-- Rotate the reward distributor/booster to a reverting endpoint (absorbed by `try/catch`).
 - Queue a slasher change (applies only after 60 days, longer than the ~38-day validator withdrawal window).
 - Adjust the share of rewards that go to sequencers versus provers such that it is not economical for one of those actors to participate.
 - Adjust the checkpoint reward to the same effect.
@@ -126,16 +142,17 @@ A rolling window bounds cumulative change by re-anchoring to the value at window
 
 ## Backwards Compatibility
 
-1. **ABI**: `setSlasher` → `queueSetSlasher` / `cancelSetSlasher` / `finalizeSetSlasher`. `setLocalEjectionThreshold` removed. `updateEscapeHatch` → `setEscapeHatch`. `EscapeHatchUpdated` → `EscapeHatchSet`. `LocalEjectionThresholdUpdated` removed. New events `PendingSlasherQueued`, `PendingSlasherCancelled`.
+1. **ABI**: `setSlasher` → `queueSetSlasher` / `cancelSetSlasher` / `finalizeSetSlasher`. `setLocalEjectionThreshold` removed. `updateEscapeHatch` → `setEscapeHatch`. `EscapeHatchUpdated` → `EscapeHatchSet`. `LocalEjectionThresholdUpdated` removed. New events `PendingSlasherQueued`, `PendingSlasherCancelled`. `setRewardConfig` SHALL no longer accept or write `rewardDistributor` / `rewardBooster`. `IRewardDistributor` gains `availableTo(address)` and `subsidizeOld(address,uint256)`; `claim` authorization changes from `msg.sender == canonicalRollup()` to `amount <= availableTo(msg.sender)`.
 2. **Timing**: Slasher replacements take effect 60 days after queueing.
 3. **Parameter constraints**: `setProvingCostPerMana` reverts on cooldown violation, step violation, or `v < 2`. `updateStakingQueueConfig` reverts on zero flush fields (matching the existing constructor invariant).
 4. **Escape hatch finality**: `setEscapeHatch` is final for the life of the rollup; deployers must verify the address before calling.
+5. **Reward endpoint finality**: `rewardDistributor` and `rewardBooster` are final for the life of the rollup; deployers must verify both contracts before construction.
 
 ## Test Cases
 
 1. **Escape hatch one-shot**: `setEscapeHatch(nonZero)` succeeds once; second call reverts with `EscapeHatchAlreadySet`; zero-address call reverts with `EscapeHatchCannotBeZero`.
-2. **Reward distributor / booster revert tolerance**: A reverting `canonicalRollup`, `claim`, or `updateAndGetShares` MUST NOT cause `submitEpochRootProof` to revert; the appropriate event fires and the fallback value is used.
-3. **Gas-cap isolation**: An endpoint that burns unbounded gas MUST be cut off at the cap without consuming the proof submitter's remaining budget.
+2. **Reward address immutability**: no reachable post-deployment path mutates `RollupStore.config.rewardDistributor` or `RollupStore.config.rewardBooster`; `setRewardConfig` cannot write either field.
+3. **Old rollup subsidy path**: after a second rollup is registered as canonical, `subsidizeOld(oldRollup, amount)` credits `availableTo(oldRollup)` without reducing `availableTo(newCanonical)`; the old rollup proves an epoch and successfully claims up to its subsidy; the canonical rollup cannot draw from `specificOld`; `recover` on the reward asset cannot reduce `availableTo(canonicalRollup())` below zero.
 4. **Proving cost floor / step / cooldown**: `setProvingCostPerMana(0|1)` reverts with `ProvingCostBelowFloor`; from 1000, setting 1501 or 666 reverts with `ProvingCostStepExceeded`, while 1500 / 667 succeed; the first post-init update lands immediately, a second within 30 days reverts with `ProvingCostCooldown`.
 5. **Flush-size invariants on update**: `updateStakingQueueConfig` with zero `normalFlushSizeMin` or `normalFlushSizeQuotient` reverts.
 6. **Slasher queue flow**: `queueSetSlasher` / `cancelSetSlasher` are owner-only; `finalizeSetSlasher` is permissionless, reverts before 60 days with `SlasherNotReady`, and applies the change after. Queue overwrite resets the timer; cancel without a pending queue reverts with `NoPendingSlasher`.
@@ -143,9 +160,13 @@ A rolling window bounds cumulative change by re-anchoring to the value at window
 
 ## Security Considerations
 
-### Reward Call Resilience vs Correctness
+### Reward Endpoint Immutability
 
-Wrapping reward-endpoint calls in `try/catch` trades per-epoch reward correctness for system liveness. Fallbacks are conservative (zero checkpoint reward, one booster share) so provers are never over-credited. Operators MUST treat `CheckpointClaimFailed` / `BoosterUpdateFailed` as signals to rotate the endpoint; the rollup does not self-heal. Gas caps (25k / 50k / 45k) must remain conservatively above honest-path cold-call cost — under-sized caps brick the honest path, over-sized caps let a malicious endpoint consume the rest of the transaction's gas.
+Because `rewardDistributor` and `rewardBooster` are set at construction and never mutated, the rollup does not need to defend against reverts, return-bombs, gas repricing, adversarial return values, or re-entrancy from these endpoints beyond what holds at deployment time. Deployers MUST audit both contracts before construction; a misdeployment is unrecoverable without redeploying the rollup via `Registry.addRollup`.
+
+### Old Rollup Subsidy Isolation
+
+`RewardDistributor.aggregateDebt` isolates old rollup balances from the canonical rollup's claim, so `subsidizeOld(oldRollup, amount)` cannot reduce `availableTo(canonicalRollup())`. `recover(ASSET, to, amount)` MUST revert if it would reduce `availableTo(canonicalRollup())` below zero, preventing an owner-driven drain of reserved old rollup funds. `subsidizeOld` is permissionless; any party can fund an arbitrary address, but funds so committed are only withdrawable by that address via `claim`.
 
 ### Rate Limit and Queue Bypass
 
