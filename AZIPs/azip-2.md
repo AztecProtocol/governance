@@ -66,6 +66,14 @@ The `rewardDistributor` and `rewardBooster` address fields of `RollupStore.confi
 
 Any funds transferred to the `RewardDistributor` without invoking `subsidizeOld` accrue to the canonical rollup via `balanceOf − aggregateDebt`, preserving the existing "mint/airdrop into the distributor" funding path.
 
+### Legacy Reward Distributor Handover
+
+The currently deployed `RewardDistributor` at `0x3D6A1B00C830C5f278FC5dFb3f6Ff0b74Db6dfe0` holds the active reward pool for the canonical rollup. When v5 is deployed with the new immutable `RewardDistributor`, the v4 rollup ceases to be canonical under the Registry, so its `claim(address(this), …)` path on the legacy distributor stops authorizing (the legacy `msg.sender == canonicalRollup()` check fails). The reward pool therefore MUST be moved to the new distributor in the same governance action that promotes v5.
+
+Concretely, the `Registry.addRollup(v5)` governance proposal MUST be bundled with a call to `legacyDistributor.recover(ASSET, newDistributor, legacyDistributor.ASSET.balanceOf(legacyDistributor))`, transferring the full reward-asset balance.
+
+Funds landing in the new distributor via this transfer are untagged and therefore accrue to the new canonical (v5).
+
 ### `provingCostPerMana` Rate Limit
 
 `setProvingCostPerMana(uint256 v)` MUST enforce:
