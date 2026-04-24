@@ -2,9 +2,9 @@
 
 ## Preamble
 
-| `azip` | `title`                   | `description`                                                                                               | `author`                                                  | `discussions-to`                                          | `status` | `category` | `created`  |
-| ------ | ------------------------- | ----------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | --------------------------------------------------------- | -------- | ---------- | ---------- |
-| 6      | Pipelining Block Building | Increase block building time by having each proposer build during the slot preceding their checkpoint slot. | Santiago Palladino (@spalladino, santiago@aztec-labs.com) | https://github.com/AztecProtocol/governance/discussions/8 | Draft    | Core       | 2026-04-21 |
+| `azip` | `title`                   | `description`                                                                                               | `author`                                                                                                  | `discussions-to`                                          | `status` | `category` | `created`  |
+| ------ | ------------------------- | ----------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | -------- | ---------- | ---------- |
+| 6      | Pipelining Block Building | Increase block building time by having each proposer build during the slot preceding their checkpoint slot. | Santiago Palladino (@spalladino, santiago@aztec-labs.com), Seán Cheetham (@maddiaa0, sean@aztec-labs.com) | https://github.com/AztecProtocol/governance/discussions/8 | Draft    | Core       | 2026-04-21 |
 
 ## Abstract
 
