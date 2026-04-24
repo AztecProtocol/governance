@@ -1,0 +1,70 @@
+name: Link AZIP to Discussion
+
+# When an AZIP PR is opened, edited, or resynchronized, this workflow reads
+# the AZIP preamble (`azip` number and `discussions-to` URL), then updates
+# the referenced GitHub Discussion:
+#
+#   1. Applies the `has-azip` label.
+#   2. Prepends a link to the AZIP PR at the top of the discussion body.
+#   3. Prefixes the discussion title with `AZIP-N: `.
+#
+# Idempotent: re-running makes no change if the discussion is already linked.
+#
+# Security notes:
+#   * Uses `pull_request_target` so the workflow can write to discussions for
+#     PRs opened from forks. To keep this safe we never check out or execute
+#     PR code. We only read one file (the AZIP markdown) via the API and
+#     parse it strictly.
+#   * `discussions-to` values are validated against a strict regex before
+#     any API call is made.
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, edited]
+    paths:
+      - 'AZIPs/**.md'
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to reprocess'
+        required: true
+        type: number
+
+permissions:
+  contents: read
+  pull-requests: read
+  discussions: write
+
+concurrency:
+  group: link-azip-${{ github.event.pull_request.number || inputs.pr_number }}
+  cancel-in-progress: false
+
+jobs:
+  link:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPO: ${{ github.repository }}
+      PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+    steps:
+      - name: Checkout workflow scripts only
+        uses: actions/checkout@v4
+        with:
+          # Intentionally check out the base ref, NOT the PR head. We only
+          # need the script in `.github/scripts/`. PR contents are fetched
+          # separately via the API and parsed without execution.
+          # Uses the PR's base ref when triggered by pull_request_target, so
+          # the script matches the branch the PR will merge into; falls back
+          # to the default branch for manual workflow_dispatch runs.
+          ref: ${{ github.event.pull_request.base.ref || github.event.repository.default_branch }}
+          sparse-checkout: |
+            .github/scripts
+          sparse-checkout-cone-mode: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Link AZIP PR to discussion
+        run: python3 .github/scripts/link_azip_to_discussion.py
