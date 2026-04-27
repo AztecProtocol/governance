@@ -40,7 +40,7 @@ Adding a private immutable value to an Aztec contract today involves writing an 
 
 There are contract designs which wouldn't otherwise require an initialiser function to be called, or which might not even need a transaction to instantiate the contract. Where applicable, avoiding such notes, function calls, and transactions would reduce deployment complexity, reduce proving times, and reduce dollar-costs.
 
-Alternatively, third-party libraries exist that "hack" immutable values into contracts by overloading existing fields (e.g. salt) in the instance see (Wonderland's [Initializer-less Contracts: The Immutables Macro](https://forum.aztec.network/t/initializerless-contracts-the-immutables-macro/8512) demonstrating this pattern.
+Alternatively, third-party libraries exist that "hack" immutable values into contracts by overloading existing fields (e.g. salt) in the instance (see Wonderland's [Initializer-less Contracts: The Immutables Macro](https://forum.aztec.network/t/initializerless-contracts-the-immutables-macro/8512) demonstrating this pattern).
 
 ## Specification
 
@@ -65,11 +65,11 @@ The `immutables_hash` MUST be included as part of the `salted_initialization_has
 ```noir
 salted_initialization_hash = Poseidon2::hash([DOM_SEP__SALTED_INITIALIZATION_HASH, salt, initialization_hash, deployer, immutables_hash])
 ```
-For contracts with no immutable values, `immutables_hash` is `0`, matching the default-zero convention already used for `salt`, `initialization_hash`, and `deployer`. The protocol cannot enforce this convention — the deployer chooses the `immutables_hash` they commit to in `salted_initialization_hash` — but a deployer who deviates from it produces an address that off-the-shelf tooling will not derive, so users will not interact with the contract at that address (see [Security Considerations](#security-considerations)).
+For contracts with no immutable values, `immutables_hash` is `0`, matching the default-zero convention already used for `salt`, `initialization_hash`, and `deployer`.
 
-This does require an additional Poseidon2 permutation round.
+The protocol cannot enforce this convention — the deployer chooses the `immutables_hash` they commit to in `salted_initialization_hash` — but a deployer who deviates from it produces an address that off-the-shelf tooling will not derive, so users will not interact with the contract at that address (see [Security Considerations](#security-considerations)).
 
-The diagram below shows the address-derivation pipeline as modified by this AZIP. Inputs and intermediate values introduced by AZIP-9 are highlighted; everything else is the existing pipeline, unchanged.
+This does require an additional Poseidon2 permutation round. The diagram below shows the address-derivation pipeline as modified by this AZIP. Inputs and intermediate values introduced by AZIP-9 are highlighted; everything else is the existing pipeline, unchanged.
 
 ```mermaid
 flowchart TD
@@ -143,7 +143,7 @@ flowchart TD
 ```
 
 ### Change to the Oracle Interface
-The oracle interface between the PXE and a private function — which feeds a `ContractInstance` into a private execution — forms part of the protocol, since alternative smart-contract frameworks must be able to execute one another's contracts. The oracle response that returns a `ContractInstance` MUST be updated to include the new `immutables_hash` field. Any framework consuming this oracle output MUST handle the additional field when reconstructing or hashing the instance.
+The oracle interface between the PXE and a private function, which feeds a `ContractInstance` into a private execution, forms part of the protocol since alternative smart-contract frameworks must be able to execute one another's contracts. The oracle response that returns a `ContractInstance` MUST be updated to include the new `immutables_hash` field. Any framework consuming this oracle output MUST handle the additional field when reconstructing or hashing the instance.
 
 ### Change to AVM Opcodes
 The AVM opcode that loads a `ContractInstance` (e.g. `GETCONTRACTINSTANCE`) MUST return the new payload shape including `immutables_hash`. The AVM's serialization layout for `ContractInstance` is bumped accordingly.
@@ -192,7 +192,7 @@ The injected runtime verification would be:
 
 The estimated cost for this verification is ~2k gates.
 
-A separate AZIP — likely from smart-contract framework maintainers — could standardise a preimage layout for the `immutables_hash` (e.g. a leading "shape" identifier distinguishing flat hashing from a Merkle tree, followed by the data).
+A separate AZIP (perhaps from smart-contract framework maintainers) could standardise a preimage layout for the `immutables_hash` (e.g. Merkle tree-style hashing for larger immutable sets that charge per access via a merkle sibling path).
 
 ### Eager Verification
 Unlike `#[storage]`, where work is only done per-access to `.read()` / `.write()` calls, the immutables are eagerly verified when `self.immutables` is referenced. Subsequent accesses via `self.immutables.<field>` are free, and so the cost of verification is amortised over multiple reads.
