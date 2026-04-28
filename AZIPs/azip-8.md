@@ -4,7 +4,7 @@
 
 | `azip` | `title` | `description` | `author` | `discussions-to` | `status` | `category` | `created` |
 |-----|-|-|-|-|-|-|-|
-| 8 | Public Key hash to mitigate Harvest-Now-X-Later risks | Contract instances contain public key hash instead of public key points | Ilyas Ridhuan (@IlyasRidhuan) | - | Draft | Core | 2026-04-27 |
+| 8 | Public Key hash to mitigate Harvest-Now-X-Later risks | Contract instances contain public key hash instead of public key points | Ilyas Ridhuan (@IlyasRidhuan), Mike Connor (@iAmMichaelConnor) | - | Draft | Core | 2026-04-27 |
 
 
 ## Abstract
@@ -101,7 +101,7 @@ public_keys_hash = Poseidon2::hash([
 ```
 
 ### Performance Impact
-While an additional layer of public key hashing is required, this does not need to happen in circuit. Overall, the number of poseidon2 permutation rounds decreases by 2 as the public keys hash is comprised of 5 elements now instead of 13. We need to perform an extra poseidon2 hash to compute the ivpk_hash in the circuit.
+While an additional layer of public key hashing is required, this does not need to happen in circuit. Overall, the number of poseidon2 permutation rounds to derive an address decreases by 2 as the public keys hash is comprised of 5 elements now instead of 13. We need to perform an extra poseidon2 hash to compute the ivpk_hash in the circuit.
 
 
 ## Rationale
@@ -111,14 +111,14 @@ While we accept that the ivsk is susceptible given that the public key needs to 
 
 | Key  | Impact if compromised | Risk Mitigated By this Proposal |
 |------|-----------------------|---------------------------------|
-| nhk  | Partial Privacy breach, spend-graph linkability.<br>No funds loss unless the signing key is also compromised. | Yes |
-| ivsk | Partial Privacy breach, read access to user account.<br>Access to all incoming private logs.<br>Access to all balances and app state.<br>Able to recover all note plaintexts to build a spend witness.<br>No funds loss unless the signing key is compromised; private-funds loss additionally requires access to the nhk. | No |
+| nhk  | Partial Privacy breach, spend-graph linkability.<br>No funds loss unless the abstract tx authorization mechanism of the user's account contract is also compromised. | Yes |
+| ivsk | Partial Privacy breach, read access to all messages that were encrypted to the user in a very specific way: via non-interactive secret sharing over a public bulletin board (such as via Aztec's private logs). That is, by broadcasting an ephemeral public key as a means to non-interactively establish a shared secret with the user (a.k.a. ephemeral-static ECDH).<br>Note: not all private messages on Aztec are submitted in this way: offchain logs can be used instead; and other, non-leaky secret-sharing schemes are programmable by users.<br>For apps which _do_ assemble logs in the way described formerly, an attacker who learns the user's ivsk and the ephemeral public key can:<br>Access the incoming private logs.<br>Access the balances and app state that were conveyed through those messages.<br>Recover note plaintexts to build a spend witness.<br>No funds loss unless the user's abstract tx authorization key is also compromised; private-funds loss additionally requires access to the nhk. | No |
 | ovsk | Partial Privacy breach, decrypts any of the user's own bookkeeping logs of sent notes.<br>Able to see which contracts the user called, amounts transferred, and recipient addresses for the user's own txs.<br>No funds loss. | Yes |
-| tsk  | Partial Privacy breach, metadata linkability (metadata only).<br>Accelerates filtering of private logs sent to the user.<br>No funds loss. | Yes |
+| tsk  | This key is currently unused.<br>No funds loss. | Yes |
 
 
 ## Backwards Compatibility
-This proposal is NOT backward compatible and represents a breaking change to the protocol.
+This proposal is NOT backward compatible and represents a breaking change to the protocol. This AZIP MUST therefore be shipped as part of a new Aztec rollup version.
 
 1. **Address invalidation.** Every existing contract address and account address is derived using `public_keys_hash`. A change to the hashing scheme entails regeneration of addresses.
 2. **PXE database invalidation.** Existing PXE databases carrying `{n,iv,ov,t}pk_hash` entries computed under the old scheme are invalid.
