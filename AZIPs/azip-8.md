@@ -12,12 +12,13 @@
 Public keys in Aztec are points on the Grumpkin curve; these public keys are included as part of contract instances that are shared amongst participants. To mitigate the risk of Harvest-Now-Decrypt/Link-Later attacks, this AZIP proposes the migration to storing the public key hash of each
 public key in the contract instance rather than the points themselves.
 
-Note this does NOT apply to the Incoming Viewing Key (ivk) which needs to remain as a point to satisfy the current encrypt-to-address scheme.
+Note this does NOT apply to the Incoming Viewing Public Key (ivpk) which needs to remain as a point to satisfy the current encrypt-to-address scheme.
 
 ## Impacted Stakeholders
 
 ### App Developers
-Noir contract authors who consume `get_public_keys(account)` see a struct reshape from `Point` to `Field` (a pre-computed hash), and the field-name convention changes from `masterNullifierPublicKey.hash()` to `npk_hash`. Existing contracts that consumed `npk_m`, `ovpk_m`, or `spk_m` as curve points will not compile and must be redesigned (no such consumers exist in current aztec-nr).
+Noir contract authors who consume `get_public_keys(account)` see a struct reshape from `Point` to `Field` (a pre-computed hash), and the field-name convention changes from `masterNullifierPublicKey.hash()` to `npk_hash`. Existing contracts that consumed `npk_m`, `ovpk_m`, or `spk_m` as curve points will not compile and must be redesigned.
+Apps MUST NOT see `npk_m` or `ovpk_m`; the Key Validation Request oracle and aztec-nr APIs enforce this at the interface level.
 
 ### Infrastructure Providers (Indexers, P2P Nodes, Block Explorers)
 Off-chain decoders of the `ContractInstancePublished` event must update to the new payload shape (15 → 12 fields).
@@ -48,12 +49,9 @@ they would be able to decrypt, link, and spend a user's notes, resulting in a to
 
 
 ### Change to Hashing Scheme for a Public Key
-The protocol MUST compute the `public_key_hash` using a domain-separated Poseidon2 hash with a serialised point but MUST NOT include the infinity flag. The infinity flag is always false for the public keys.
+The protocol MUST compute the `public_key_hash` using a domain-separated Poseidon2 hash over the serialised point.
 
 ```noir
-// Previous scheme
-public_key_hash = Poseidon2::hash(point.x, point.y, point.is_inf)
-
 // Updated scheme
 // where DOM_SEP__PUBLIC_KEY_HASH = poseidon2_hash_bytes(b"az_dom_sep__public_key_hash")
 public_key_hash = Poseidon2::hash([DOM_SEP__PUBLIC_KEY_HASH, point.x, point.y])
@@ -100,6 +98,95 @@ public_keys_hash = Poseidon2::hash([
 
 ```
 
+The full address derivation under this proposal is shown below. Yellow highlights mark the new pre-hashed values; the off-circuit subgraph captures the work shifted out of the circuit by this AZIP.
+
+```mermaid
+flowchart TD
+  %% --- salted initialisation hash ---
+  DSS["DOM_SEP__INIT_HASH"]
+  SALT["salt"]
+  INIT["initialisation_hash"]
+  DEP["deployer_address"]
+  H2(("Poseidon2"))
+  SIH["salted_initialisation_hash"]
+  DSS --> H2
+  SALT --> H2
+  INIT --> H2
+  DEP --> H2
+  H2 --> SIH
+
+  %% --- partial address ---
+  DSPA["DOM_SEP__PARTIAL_ADDR"]
+  CID["contract_class_id"]
+  H3(("Poseidon2"))
+  PA["partial_address"]
+  DSPA --> H3
+  CID --> H3
+  SIH --> H3
+  H3 --> PA
+
+  %% --- public keys hash, split across PXE and circuit ---
+  subgraph offcircuit["Off-circuit (PXE) — NEW"]
+    NPK["npk point"]
+    OVPK["ovpk point"]
+    TPK["tpk point"]
+    NPKH["npk_hash"]:::new
+    OVPKH["ovpk_hash"]:::new
+    TPKH["tpk_hash"]:::new
+    NPK -. poseidon2 .-> NPKH
+    OVPK -. poseidon2 .-> OVPKH
+    TPK -. poseidon2 .-> TPKH
+  end
+
+  subgraph incircuit["In-circuit"]
+    IVPK["ivpk point"]
+    IVPKH["ivpk_hash"]:::new
+    PKH["public_keys_hash"]
+    IVPK -->|poseidon2| IVPKH
+    NPKH --> PKH
+    IVPKH --> PKH
+    OVPKH --> PKH
+    TPKH --> PKH
+  end
+
+  %% --- pre address ---
+  DSCA["DOM_SEP__CONTRACT_ADDR_V1"]
+  H5(("Poseidon2"))
+  PRE["pre_addr"]
+  DSCA --> H5
+  PKH --> H5
+  PA --> H5
+  H5 --> PRE
+
+  %% --- address point and address ---
+  EC["pre_addr · G + ivpk"]
+  AP["address_point"]
+  ADDR["address (x-coordinate)"]
+  PRE --> EC
+  IVPK -. reused .-> EC
+  EC --> AP
+  AP --> ADDR
+
+  classDef new fill:#fff4cd,stroke:#d4a017,stroke-width:2px,color:#000
+  linkStyle 9,10,11,12 stroke:#d4a017,stroke-width:2px
+  linkStyle 13,14,15,16 stroke:#d4a017,stroke-width:1.5px
+```
+
+### Key Validation Requests
+
+The Key Validation Request (KVR) interface MUST change. Today an app receives `{ sk_app, Pk_m, app_address }`; under this proposal it becomes `{ sk_app, hashed_pk_m, app_address }`. Apps MUST NOT receive `Pk_m`. This entails:
+- aztec-nr interface and constraint changes for any contract issuing a KVR.
+- Kernel circuit changes to validate the new request shape.
+
+### aztec-nr Oracle Interface
+
+The oracle for retrieving public keys MUST return hashed public keys rather than points, and the oracle name SHOULD change accordingly. Oracle interfaces are part of the protocol surface: alternative smart contract frameworks may need to execute aztec-nr contracts (and vice versa) in future.
+
+### AVM and Kernel Changes
+
+- AVM opcodes and logic that touch public keys MUST be updated to operate over hashes rather than points.
+- Kernel circuits MUST be updated to validate the contract address of the function being processed against the new `public_keys_hash` derivation, and to handle the new KVR shape.
+
 ### Performance Impact
 While an additional layer of public key hashing is required, this does not need to happen in circuit. Overall, the number of poseidon2 permutation rounds to derive an address decreases by 2 as the public keys hash is comprised of 5 elements now instead of 13. We need to perform an extra poseidon2 hash to compute the ivpk_hash in the circuit.
 
@@ -108,6 +195,10 @@ While an additional layer of public key hashing is required, this does not need 
 Harvest-Now-X-Later is a genuine concern across blockchains and it is prudent to proactively prepare for a post-quantum future. By keeping the public keys on the client device, we can minimise the risk that a harvest adversary is able to retroactively link a user's on-chain behavior.
 
 While we accept that the ivsk is susceptible given that the public key needs to remain in point form, it is the combination of keys (e.g. ivsk + nhk) that would result in a loss of funds or a complete breakdown of privacy.
+
+Two keys remain effectively unprotectable by this proposal:
+- **`ivpk_m`** must be visible to any app circuit that derives an address, since address derivation encodes `ivpk_m` into its constraint system. Leakage is practically unavoidable.
+- **The signing public key** (the to-be-repurposed `tpk` slot) is exposed whenever the user signs something for a counterparty, since verification requires it.
 
 | Key  | Impact if compromised | Risk Mitigated By this Proposal |
 |------|-----------------------|---------------------------------|
