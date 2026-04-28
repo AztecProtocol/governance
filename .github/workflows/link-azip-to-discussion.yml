@@ -50,13 +50,12 @@ jobs:
       - name: Checkout workflow scripts only
         uses: actions/checkout@v4
         with:
-          # Intentionally check out the base ref, NOT the PR head. We only
-          # need the script in `.github/scripts/`. PR contents are fetched
-          # separately via the API and parsed without execution.
-          # Uses the PR's base ref when triggered by pull_request_target, so
-          # the script matches the branch the PR will merge into; falls back
-          # to the default branch for manual workflow_dispatch runs.
-          ref: ${{ github.event.pull_request.base.ref || github.event.repository.default_branch }}
+          # Always check out the default branch, NOT the PR head or its base
+          # ref. We only need the script in `.github/scripts/`; PR contents
+          # are fetched separately via the API and parsed without execution.
+          # Pinning to the default branch prevents a PR from targeting a base
+          # branch that carries a historically vulnerable script version.
+          ref: ${{ github.event.repository.default_branch }}
           sparse-checkout: |
             .github/scripts
           sparse-checkout-cone-mode: false
