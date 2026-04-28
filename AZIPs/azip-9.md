@@ -5,7 +5,7 @@
 
 | `azip` | `title` | `description` | `author` | `discussions-to` | `status` | `category` | `created` |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-|9| Private Immutables | Adds private immutables   | Ilyas Ridhuan (@IlyasRidhuan)  | -  | Draft | Core  | 2026-04-28 |
+|9| Private Immutables | Adds private immutables   | Ilyas Ridhuan (@IlyasRidhuan), Mike Connor (iAmMichaelConnor)  | -  | Draft | Core  | 2026-04-28 |
 
 
 ## Abstract
