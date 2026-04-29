@@ -1,4 +1,4 @@
-# Aztec Improvement Proposal: Pipelining Block Building
+# AZIP-6: Pipelining Block Building
 
 ## Preamble
 
@@ -115,7 +115,7 @@ The proposer for the first slot of a new epoch MUST be prepared to re-execute th
 
 ### Parameters
 
-The following protocol parameters are introduced by this AZIP. Values are to be filled in prior to merging.
+The following protocol parameters are introduced by this AZIP. 
 
 | Parameter                          | Value | Rationale                                                                                                                                                                                                                                                                     |
 | ---------------------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -215,7 +215,7 @@ This is mitigated by the strict proposal acceptance windows defined in the Speci
 
 ### Griefing by withholding a checkpoint
 
-If the checkpoint for slot `N` fails to be mined on L1 due to congestion or a poor choice of gas price by the proposer, the work for slot `N+1` becomes invalid and must be discarded. A malicious proposer for slot `N` can exploit this by deliberately withholding its L1 checkpoint transaction at the last minute, griefing the proposer for slot `N+1` at the cost of forfeiting its own fees. This is mitigated by a new slashing conditions proposed in AZIP-7.
+If the checkpoint for slot `N` fails to be mined on L1 due to congestion or a poor choice of gas price by the proposer, the work for slot `N+1` becomes invalid and must be discarded. A malicious proposer for slot `N` can exploit this by deliberately withholding its L1 checkpoint transaction at the last minute, griefing the proposer for slot `N+1` at the cost of forfeiting its own fees. This is mitigated by a new slashing condition proposed in AZIP-7.
 
 ### Risk of building on a stale head
 
