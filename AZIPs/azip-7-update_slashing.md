@@ -78,7 +78,7 @@ A committee member attested to a checkpoint proposal that included an invalid bl
 
 #### Attested Checkpoint Not Posted to L1
 
-A proposer received sufficient attestations for a checkpoint but failed to submit it to L1, causing a 1-slot reorg (or 2-slots under pipelining as defined in AZIP-6). This offense MAY be conditional on it happening at least `CHECKPOINT_NOT_POSTED_REPETITION_THRESHOLD` times, which resets as soon a checkpoint is successfully posted by the proposer or after `CHECKPOINT_NOT_POSTED_RESET_WINDOW`. A missed checkpoint MAY not be considered when the L1 base fee at the missed slot exceeded `CHECKPOINT_NOT_POSTED_L1_CONGESTION_BASE_FEE_THRESHOLD`. This is a slot-based offense, and it only applies if the proposer received sufficient attestations within `CHECKPOINT_NOT_POSTED_ATTESTATION_WINDOW` before the end of its slot.
+A proposer received sufficient attestations for a checkpoint but failed to submit it to L1, causing a 1-slot reorg (or 2-slots under pipelining as defined in [AZIP-6](./azip-6-pipelining.md)). This offense MAY be conditional on it happening at least `CHECKPOINT_NOT_POSTED_REPETITION_THRESHOLD` times, which resets as soon a checkpoint is successfully posted by the proposer or after `CHECKPOINT_NOT_POSTED_RESET_WINDOW`. A missed checkpoint MAY not be considered when the L1 base fee at the missed slot exceeded `CHECKPOINT_NOT_POSTED_L1_CONGESTION_BASE_FEE_THRESHOLD`. This is a slot-based offense, and it only applies if the proposer received sufficient attestations within `CHECKPOINT_NOT_POSTED_ATTESTATION_WINDOW` before the end of its slot.
 
 ### Changes to Existing Offenses
 
