@@ -44,8 +44,8 @@ they would be able to decrypt, link, and spend a user's notes, resulting in a to
 |------------|------------------------------|----------------|
 | Nullifier Hiding Key | nhk / nhpk | Used to create nullifiers (e.g. when spending notes) |
 | Incoming Viewing Key | ivsk / ivpk | Used to decrypt incoming ciphertexts. Used in encrypt-to-address |
-| Outgoing Viewing Key | ovsk / ovpk | Used to encrypt outgoing logs. Used for record-keeping |
-| Tagging Key | tsk / tpk | Used for tagging and note discovery |
+| Outgoing Viewing Key | ovsk / ovpk | For encrypting outgoing logs. Used for record-keeping (not currently used) |
+| Tagging Key | tsk / tpk | For tagging and note discovery (not currently used) |
 
 
 ### Change to Hashing Scheme for a Public Key
