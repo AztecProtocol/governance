@@ -1,4 +1,4 @@
-# Aztec Improvement Proposal: Update Slashing Rules
+# AZIP-7: Update Slashing Rules
 
 ## Preamble
 
@@ -98,7 +98,7 @@ Second, block re-execution is used to independently verify whether a proposal wa
 
 ### Parameters
 
-The following protocol parameters are introduced or referenced by this AZIP. Values are to be filled in prior to merging.
+The following protocol parameters are introduced or referenced by this AZIP.
 
 | Parameter                                                | Value                | Description                                                                                                                                                                                                   |
 | -------------------------------------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
