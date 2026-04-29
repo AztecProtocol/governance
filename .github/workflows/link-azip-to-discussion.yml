@@ -17,6 +17,11 @@ name: Link AZIP to Discussion
 #     parse it strictly.
 #   * `discussions-to` values are validated against a strict regex before
 #     any API call is made.
+#   * Authenticates as `DISCUSSION_WRITE_TOKEN` (a fine-grained PAT scoped to
+#     this repo with `discussions: write`) rather than `GITHUB_TOKEN`, because
+#     org policy caps `GITHUB_TOKEN` to read-only and overrides the workflow
+#     `permissions:` block. The PAT must be a *fine-grained* token limited to
+#     this repository — do not use a classic PAT.
 
 on:
   pull_request_target:
@@ -32,8 +37,6 @@ on:
 
 permissions:
   contents: read
-  pull-requests: read
-  discussions: write
 
 concurrency:
   group: link-azip-${{ github.event.pull_request.number || inputs.pr_number }}
@@ -43,7 +46,7 @@ jobs:
   link:
     runs-on: ubuntu-latest
     env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_TOKEN: ${{ secrets.DISCUSSION_WRITE_TOKEN }}
       REPO: ${{ github.repository }}
       PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
     steps:
