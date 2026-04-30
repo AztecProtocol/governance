@@ -40,7 +40,7 @@ Adding a private immutable value to an Aztec contract today involves writing an 
 
 There are contract designs which wouldn't otherwise require an initialiser function to be called, or which might not even need a transaction to instantiate the contract. Where applicable, avoiding such notes, function calls, and transactions would reduce deployment complexity, reduce proving times, and reduce dollar-costs.
 
-Alternatively, third-party libraries exist that "hack" immutable values into contracts by overloading existing fields (e.g. salt) in the instance (see Wonderland's [Initializer-less Contracts: The Immutables Macro](https://forum.aztec.network/t/initializerless-contracts-the-immutables-macro/8512) demonstrating this pattern).
+The way immutables are currently achieved is through third-party libraries which "hack" immutable values into contracts by overloading existing fields (e.g. salt) in the instance (see Wonderland's [Initializer-less Contracts: The Immutables Macro](https://forum.aztec.network/t/initializerless-contracts-the-immutables-macro/8512) demonstrating this pattern).
 
 ## Specification
 
@@ -162,37 +162,17 @@ A new domain separator `DOM_SEP__IMMUTABLES_HASH` could be defined as:
 DOM_SEP__IMMUTABLES_HASH: u32 = poseidon2_hash_bytes(b"az_dom_sep__immutables_hash");
 ```
 
-The `immutables_hash` itself is defined as the flat hash of the list of immutable values in the contract.
+The `immutables_hash` itself could be defined as the flat hash of the list of immutable values in the contract.
 ```noir
 immutables_hash = Poseidon2::hash([DOM_SEP__IMMUTABLES_HASH, <list_of_field_elements>]);
 ```
+A separate AZIP (perhaps from smart-contract framework maintainers) could standardise a preimage layout for the `immutables_hash` (e.g. Merkle tree-style hashing for larger immutable sets that charge per access via a merkle sibling path).
 
 ### Suggested Contract API and Verification Flow
 The protocol does not mandate a specific smart-contract syntax for declaring or accessing immutables; the choice belongs to smart-contract framework maintainers. The following is offered as a suggestion that aztec-nr could adopt.
 
 A new `#[immutable]` attribute could be provided for contract authors who need to declare a struct as immutable, following the approach taken by `#[storage]`.
 
-```noir
-#[immutable]
-struct Immutables {
-    some_immutable_val: AztecAddress,
-    another_immutable_val: u8,
-}
-```
-
-The `#[external]`, `#[internal]`, and `#[private]` function macros could inspect the function body and inject initialisation code only for functions that reference `self.immutables`.
-
-The injected runtime verification would be:
-
-1) Read `this_address` from the context.
-2) Constrained retrieval of the `ContractInstance` using `this_address`.
-3) Load the list of immutable values from the capsule store, using the defined reserved slot `IMMUTABLES_CAPSULE_SLOT`.
-4) Compute the `immutables_hash` of the capsule-returned values and compare it to the value stored within the `ContractInstance`.
-5) Deserialise and return the `Immutables` value to the function.
-
-The estimated cost for this verification is ~2k gates.
-
-A separate AZIP (perhaps from smart-contract framework maintainers) could standardise a preimage layout for the `immutables_hash` (e.g. Merkle tree-style hashing for larger immutable sets that charge per access via a merkle sibling path).
 
 ### Eager Verification
 Unlike `#[storage]`, where work is only done per-access to `.read()` / `.write()` calls, the immutables are eagerly verified when `self.immutables` is referenced. Subsequent accesses via `self.immutables.<field>` are free, and so the cost of verification is amortised over multiple reads.
