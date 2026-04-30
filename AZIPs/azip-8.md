@@ -15,6 +15,7 @@ public key in the contract instance rather than the points themselves.
 Note this does NOT apply to the Incoming Viewing Public Key (ivpk) which needs to remain as a point to satisfy the current encrypt-to-address scheme.
 
 ## Impacted Stakeholders
+This AZIP changes contract address derivation, so every stakeholder that consumes, displays, or persists an Aztec address is affected on the next version of Aztec that adopts it. See [Backwards Compatibility](#backwards-compatibility) for the underlying change.
 
 ### App Developers
 Noir contract authors who consume `get_public_keys(account)` see a struct reshape from `Point` to `Field` (a pre-computed hash), and the field-name convention changes from `masterNullifierPublicKey.hash()` to `npk_m_hash`. Existing contracts that consumed `npk_m`, `ovpk_m`, or `spk_m` as curve points will not compile and must be redesigned.
