@@ -8,13 +8,11 @@
 
 ## Abstract
 
-This AZIP updates the set of slashing offenses enforced by the Aztec protocol. It introduces new offenses covering checkpoint-related proposer misbehavior (submitting a block proposal after a checkpoint, invalid checkpoint proposals, block proposals containing clearly invalid transactions), new offenses on attestations (attesting to an invalid proposal, failure to post an attested checkpoint to L1), and revises existing offenses by replacing _Epoch Pruned_ with a _Data Withholding_ check and refining how _Validator Inactivity_ is measured and attributed.
+This AZIP updates the set of slashing offenses enforced by the Aztec protocol. It introduces new offenses covering checkpoint-related proposer misbehavior (submitting a block proposal after a checkpoint, invalid checkpoint proposals, block proposals containing clearly invalid transactions), a new offense on attestations (attesting to an invalid proposal), and revises existing offenses by replacing _Epoch Pruned_ with a _Data Withholding_ check and refining how _Validator Inactivity_ is measured and attributed.
 
 ## Impacted Stakeholders
 
-**Validators.** Validators are directly affected: this AZIP expands the set of behaviors that can lead to stake being slashed. Proposers gain new slashing surface for checkpoint-related misbehavior and for failing to post attested checkpoints to L1. Attestors gain new slashing surface for attesting to invalid proposals and for data withholding. Conversely, validators are no longer exposed to prover failures.
-
-**Applications.** New rules should help reduce reorgs caused by missed checkpointing to L1, which improves application-layer user experience.
+**Validators.** Validators are directly affected: this AZIP expands the set of behaviors that can lead to stake being slashed. Proposers gain new slashing surface for checkpoint-related misbehavior. Attestors gain new slashing surface for attesting to invalid proposals and for data withholding. Conversely, validators are no longer exposed to prover failures.
 
 ## Motivation
 
@@ -70,15 +68,11 @@ A proposer broadcast an invalid checkpoint proposal over the peer-to-peer networ
 
 A proposer broadcast a block proposal containing clearly invalid transactions, such as transactions with an incorrect chain ID. The proposer MUST be penalized. This is a slot-based offense. This is an extension to slashing for _Invalid Block Proposals_, which didn't account for this scenario.
 
-### New Offenses on Attestations
+### New Offense on Attestations
 
 #### Attesting to an Invalid Proposal
 
 A committee member attested to a checkpoint proposal that included an invalid block, where a block is considered invalid when the resulting state after executing it is different to that of the proposal. Detected by tracking invalid block proposals, and then tracking attestations to checkpoints in that slot. The attesting validator MUST be penalized. This is a slot-based offense. Rationale for this offense is to hold validators accountable if they fail to properly validate proposals.
-
-#### Attested Checkpoint Not Posted to L1
-
-A proposer received sufficient attestations for a checkpoint but failed to submit it to L1, causing a 1-slot reorg (or 2-slots under pipelining as defined in [AZIP-6](./azip-6-pipelining.md)). This offense MAY be conditional on it happening at least `CHECKPOINT_NOT_POSTED_REPETITION_THRESHOLD` times, which resets as soon a checkpoint is successfully posted by the proposer or after `CHECKPOINT_NOT_POSTED_RESET_WINDOW`. A missed checkpoint MAY not be considered when the L1 base fee at the missed slot exceeded `CHECKPOINT_NOT_POSTED_L1_CONGESTION_BASE_FEE_THRESHOLD`. This is a slot-based offense, and it only applies if the proposer received sufficient attestations within `CHECKPOINT_NOT_POSTED_ATTESTATION_WINDOW` before the end of its slot.
 
 ### Changes to Existing Offenses
 
@@ -100,13 +94,9 @@ Second, block re-execution is used to independently verify whether a proposal wa
 
 The following protocol parameters are introduced or referenced by this AZIP.
 
-| Parameter                                                | Value                | Description                                                                                                                                                                                                   |
-| -------------------------------------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `CHECKPOINT_NOT_POSTED_REPETITION_THRESHOLD`             | 2                    | Number of repeated _Attested Checkpoint Not Posted to L1_ occurrences by the same proposer required to trigger slashing. Must be large enough to absorb isolated failures but small enough to deter griefing. |
-| `CHECKPOINT_NOT_POSTED_L1_CONGESTION_BASE_FEE_THRESHOLD` | 300 gwei             | L1 base fee above which an _Attested Checkpoint Not Posted to L1_ offense is suppressed, to avoid penalizing proposers who could not land their L1 tx under genuine L1 congestion.                            |
-| `CHECKPOINT_NOT_POSTED_RESET_WINDOW`                     | 36 epochs            | Time window after which the repetition count for _Attested Checkpoint Not Posted to L1_ resets, to allow recovery from isolated failures.                                                                     |
-| `CHECKPOINT_NOT_POSTED_ATTESTATION_WINDOW`               | 0.5 L2 slot duration | Time window before the end of a checkpoint proposal slot during which the proposer must receive sufficient attestations for the _Attested Checkpoint Not Posted to L1_ offense to apply, to ensure liveness.  |
-| `DATA_WITHHOLDING_TOLERANCE`                             | 3 L2 slot duration   | Time after checkpoint mining (or end of checkpoint slot) after which, if transaction data is not found, the validators who attested to that slot are considered at fault for data withholding.                |
+| Parameter                    | Value              | Description                                                                                                                                                                                    |
+| ---------------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATA_WITHHOLDING_TOLERANCE` | 3 L2 slot duration | Time after checkpoint mining (or end of checkpoint slot) after which, if transaction data is not found, the validators who attested to that slot are considered at fault for data withholding. |
 
 ## Rationale
 
@@ -116,8 +106,6 @@ Replacing _Epoch Pruned_ with _Data Withholding_ narrows validator responsibilit
 
 For _Validator Inactivity_, using block re-execution for fault attribution replaces the prior heuristic (using attestation count as a proxy for proposer-vs-attestor fault) with a direct check. This is now practical because all nodes re-execute blocks. The previous heuristic was easy to game: any node that had two validator addresses in the committee could create an attestation for their own block even if they did not release the relevant data, flagging all other validators as at fault. As for moving measurement to the end of each epoch, this allows for punishing inactive validators regardless of prover availability, and reduces the time to trigger the slash.
 
-For _Attested Checkpoint Not Posted to L1_, the rationale is network liveness: a proposer who gathers sufficient attestations but fails to post the checkpoint causes a 1-slot reorg and, under pipelined block-building, can grief the following proposer. Making this conditional on repeated occurrences and L1 congestion avoids penalizing proposers for isolated or genuinely unavoidable failures.
-
 ## Backwards Compatibility
 
 This is a consensus-layer rule change. All nodes MUST upgrade in lockstep: nodes running the old rule set would neither detect nor vote for the new offenses, and would continue voting for offenses after being removed. Running a mixed network would cause divergent slashing outcomes across proposers. Hence we propose aligning this with the v5 upgrade.
@@ -125,8 +113,6 @@ This is a consensus-layer rule change. All nodes MUST upgrade in lockstep: nodes
 ## Security Considerations
 
 **False positives for data withholding on congested p2p network.** If a node fails to gather all txs for a given checkpoint due to p2p network congestion, even if the committee did make all data available, they will consider the committee at fault for data withholding. This creates a risk of false positives in cases of genuine p2p congestion.
-
-**Punishing honest sequencers under L1 congestion.** This offense exists to protect liveness and to prevent griefing of the next proposer under pipelined block-building. However, it creates a risk of false positives in cases where the proposer genuinely failed to land their L1 tx due to congestion. The proposed conditionality on repeated occurrences and L1 base fee is designed to mitigate this risk.
 
 ## Copyright Waiver
 
