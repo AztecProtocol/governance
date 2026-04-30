@@ -8,9 +8,9 @@
 
 
 ## Abstract
-Aztec's `PublicKeys` struct currently includes a tagging public key (`tpk`) and a corresponding tagging secret key (`tsk`). However, tagging for note discovery is in fact currently derived from the sender's `ivsk` and the `tsk` is unused.
+Aztec's `PublicKeys` struct currently includes a tagging public key (`tpk`) and a corresponding tagging secret key (`tsk`). However, tagging for note discovery is in fact currently derived from the sender's `ivsk` and the `tsk` is unused (see [Rationale](#Rationale)).
 
-This AZIP proposes renaming `tpk` / `tsk` to `spk` / `ssk` (signing public key / signing secret key) to semantically align it with its future use as a means for contracts to sign messages.
+This AZIP proposes renaming `tpk` / `tsk` to `spk` / `ssk` (signing public key / signing secret key) to semantically align it with its planned future use as a means for contracts to sign messages.
 
 ## Impacted Stakeholders
 
@@ -81,7 +81,35 @@ Kernel circuits that validate the contract address of the function call being pr
 ## Rationale
 
 Since the tagging key is unused by the protocol, by re-using it for this purpose we minimise the invasiveness of the change.
+### Alternatives Considered
 
+#### Authwits
+
+Aztec has "Account Abstraction", which means there are no protocol-specified keys to be used for authorising any transactions. Instead, users can write so-called "Account Contracts" which contain custom logic for tx authorisation.
+
+Sometimes, an app function might wish to check with the owner of some state variable whether the owner has given permission to mutate the variable. An example is a `transfer_from` function of a token contract: since the `msg_sender` is not necessarily the _owner_ of the balance being decremented, the token contract seeks permission from the owner. Given the nature of "account abtraction", there is no canonical scheme for conveying "I give permission" or "I am authorising this action"; instead the user's account contract must be called, since the account contract can contain any abstract notion of "I am authorising this action". Hence, the `transfer_from` function can't contain inlined logic for authorisation; it must make a call to the owner's account contract and receive a `true` response.
+
+A downside is that this process requires an extra kernel iteration to process that "authwit call" to the user's account contract, and kernel iterations cost proving time.
+
+The notion of enshrining a dedicated "signing keypair", as introduced by this AZIP, can then simply be thought of as an optimisation to avoid a kernel iteration. In this sense, an alternative is to simply not implement this AZIP and instead accept the usage of authwit calls.
+
+#### Migrations
+
+[This forum comment](https://forum.aztec.network/t/request-for-grant-proposals-application-state-migration/8298/2) discusses the usefulness of an enshrined key -- instead of authwits -- in the case of state migrations.
+
+Several teams are intending to abuse the tagging keypair for this purpose. This AZIP would repurpose the meaning of this key to align with this abuse.
+
+From the forum comment:
+
+> Why does Bob need another public key to prove who he is to the next rollup instance?
+> 
+> Well, Aztec has account abstraction, which technically means there's no enshrined public key to represent Bob. Bob is represented by his account contract, which means the way Bob would prove "I am Bob" to a particular rollup instance is not "Here is a signature over some _canonical_ public key", but instead "A function of my account contract has successfully executed". The network doesn't care about the internals of that function: the function might actually validate a signature against some public key, but the network doesn't see that; it only recognises the successful execution of a function of Bob's account contract as evidence of "I am Bob".
+>
+> So if Bob wants to migrate his state from one ("old") rollup to another ("new") rollup, why can't he provide a proof of execution of a function of his old account contract to functions of the new rollup? Well, whether that is a safe approach would depend on _why_ a new rollup is being created. It's possible that the _reason_ for a new rollup is due to a bug in the old rollup (because the network is in its Alpha phase). If there's a bug in the proving system, for example, then Bob's old account contract might contain a bug. In that case, the new rollup should not trust proofs from Bob's old account contract. In that case, Bob's mechanism for proving "I am Bob" -- of furnishing a proof of successful execution of a function of his account contract -- is broken. App developers who wish to design ways for users to migrate state between rollups should account for this possibility.
+>
+> Hence, a new migration public key -- which cannot be corrupted by any bugs in the Alpha phase of Aztec -- is an attractive mechanism through which Bob could prove to functions of the new rollup "I was Bob on the old rollup, so please let me migrate Bob's state over to this new rollup. I have generated a new address to be the owner of that state on this new rollup".
+
+There's an open question about whether the two use cases -- of signing as a form of acknowledgement, or of signing for the purpose of migrations -- have different threat models for how the secret keys should be stored. In the former case, theft of a signing secret key could lead to impersonation and a breakage of "non-repudiation"; in the latter case, theft of a migration secret key could lead to the attacker being able to establish a new (malicious) account contract on the new rollup and possibly migrate the user's state from the old rollup, effectively stealing from the user. In this light, it seems two new keypairs are required: a signing keypair and a dedicated migration keypair. 
 ### Address Changes
 While the address derivation is unchanged, whether a given account's address changes under this AZIP depends on whether the value stored at the renamed slot changes:
 - A wallet that persists `tsk_m` can carry the same `Field` value forward as `spk_m`. The derived `public_keys_hash` is identical and the address is preserved.
@@ -90,7 +118,7 @@ While the address derivation is unchanged, whether a given account's address cha
 It is RECOMMENDED that wallets re-derive the secret key and new address to not be reliant on legacy code paths.
 
 ### Why change the secret-key domain separator preimage
-A new domain separator is used to preserve consistency across the protocol. This comes at the cost of invalidating keys and addresses derived prior to this AZIP.
+A new domain separator is used to preserve consistency across the protocol. Whilst this would ordinarily invalidate existing keys and addresses, this change MUST be shipped as part of a new Aztec rollup version.
 
 An alternative of maintaining the original domain separator was explored but ultimately it was decided that permanently embedding the legacy notion of a `tsk` into the protocol was undesirable.
 
