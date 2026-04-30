@@ -17,7 +17,7 @@ Note this does NOT apply to the Incoming Viewing Public Key (ivpk) which needs t
 ## Impacted Stakeholders
 
 ### App Developers
-Noir contract authors who consume `get_public_keys(account)` see a struct reshape from `Point` to `Field` (a pre-computed hash), and the field-name convention changes from `masterNullifierPublicKey.hash()` to `npk_hash`. Existing contracts that consumed `npk_m`, `ovpk_m`, or `spk_m` as curve points will not compile and must be redesigned.
+Noir contract authors who consume `get_public_keys(account)` see a struct reshape from `Point` to `Field` (a pre-computed hash), and the field-name convention changes from `masterNullifierPublicKey.hash()` to `npk_m_hash`. Existing contracts that consumed `npk_m`, `ovpk_m`, or `spk_m` as curve points will not compile and must be redesigned.
 Apps MUST NOT see `npk_m` or `ovpk_m`; the Key Validation Request oracle and aztec-nr APIs enforce this at the interface level.
 
 ### Infrastructure Providers (Indexers, P2P Nodes, Block Explorers)
@@ -53,8 +53,8 @@ The protocol MUST compute the `public_key_hash` using a domain-separated Poseido
 
 ```noir
 // Updated scheme
-// where DOM_SEP__PUBLIC_KEY_HASH = poseidon2_hash_bytes(b"az_dom_sep__public_key_hash")
-public_key_hash = Poseidon2::hash([DOM_SEP__PUBLIC_KEY_HASH, point.x, point.y])
+// where DOM_SEP__SINGLE_PUBLIC_KEY_HASH = poseidon2_hash_bytes(b"az_dom_sep__single_public_key_hash")
+public_key_hash = Poseidon2::hash([DOM_SEP__SINGLE_PUBLIC_KEY_HASH, point.x, point.y])
 ```
 
 ### Changes to Contract Instances and Event Payload
@@ -63,10 +63,10 @@ The protocol-circuits `PublicKeys` struct SHALL be:
 
 ```noir
 pub struct PublicKeys {
-    pub npk_hash:  Field,
-    pub ivpk:      IvpkM,
-    pub ovpk_hash: Field,
-    pub tpk_hash:  Field,
+    pub npk_m_hash:  Field,
+    pub ivpk_m:      IvpkM,
+    pub ovpk_m_hash: Field,
+    pub tpk_m_hash:  Field,
 }
 ```
 
@@ -75,10 +75,10 @@ The event payload MUST change from 15 fields to 12 fields:
 
 ```noir
 [ MAGIC, address, version, salt, class_id, init_hash,
-  npk_hash,               //  2 fields → 1 field
-  ivpk.x, ivpk.y,         //  unchanged
-  ovpk_hash,              //  2 fields → 1 field
-  tpk_hash,               //  2 fields → 1 field
+  npk_m_hash,               //  2 fields → 1 field
+  ivpk_m.x, ivpk_m.y,       //  unchanged
+  ovpk_m_hash,              //  2 fields → 1 field
+  tpk_m_hash,               //  2 fields → 1 field
   deployer ]
 ```
 
@@ -91,10 +91,10 @@ The event payload MUST change from 15 fields to 12 fields:
 ```noir
 public_keys_hash = Poseidon2::hash([
     DOM_SEP__PUBLIC_KEYS_HASH,
-    npk_hash,
-    Poseidon2::hash([DOM_SEP__PUBLIC_KEY_HASH, ivpk.x, ivpk.y]),
-    ovpk_hash,
-    tpk_hash ]);
+    npk_m_hash,
+    Poseidon2::hash([DOM_SEP__SINGLE_PUBLIC_KEY_HASH, ivpk_m.x, ivpk_m.y]),
+    ovpk_m_hash,
+    tpk_m_hash ]);
 
 ```
 
@@ -130,9 +130,9 @@ flowchart TD
     NPK["npk point"]
     OVPK["ovpk point"]
     TPK["tpk point"]
-    NPKH["npk_hash"]:::new
-    OVPKH["ovpk_hash"]:::new
-    TPKH["tpk_hash"]:::new
+    NPKH["npk_m_hash"]:::new
+    OVPKH["ovpk_m_hash"]:::new
+    TPKH["tpk_m_hash"]:::new
     NPK -. poseidon2 .-> NPKH
     OVPK -. poseidon2 .-> OVPKH
     TPK -. poseidon2 .-> TPKH
