@@ -58,7 +58,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 
 #### Submitting Block Proposal After Checkpoint
 
-A proposer sent a block proposal after the checkpoint proposal had already been issued for the same slot. Once a checkpoint is proposed, no further block proposals SHOULD be sent. The proposer MUST be penalized. This is a slot-based offense.
+A proposer sent a block proposal after the checkpoint proposal had already been issued for the same slot. Once a checkpoint is proposed, further block proposals MUST NOT be sent. The proposer MUST be penalized. This is a slot-based offense.
 
 #### Invalid Checkpoint Proposal
 
@@ -78,7 +78,7 @@ A committee member attested to a checkpoint proposal that included an invalid bl
 
 #### Epoch Pruned replaced by Data Withholding
 
-The _Epoch Pruned_ offense is removed in favor of checking _Data Withholding_ after a slot. After a checkpoint is published, nodes check if the data for all transactions in it is available. If not, the set of validators who attested to that slot is considered at fault for not making the data available to the network. Slashing MUST apply even if the epoch gets pruned, to prevent committees from striking side deals with specific provers by only releasing transaction data to them.
+The _Epoch Pruned_ offense is removed in favor of checking _Data Withholding_ after a slot. After a checkpoint is published, nodes check if the data for all transactions in it is available. If not, the set of validators who attested to that slot is considered at fault for not making the data available to the network. Slashing MUST apply even if the epoch is successfully proved, to prevent committees from striking side deals with specific provers by only releasing transaction data to them.
 
 We consider this an offense if `DATA_WITHHOLDING_TOLERANCE` seconds after checkpoint is mined on L1 (alternatively, after the end of the checkpoint's slot) the data (ie the txs included in the blocks of the checkpoint) is not found by the node.
 
@@ -102,7 +102,7 @@ The following protocol parameters are introduced or referenced by this AZIP.
 
 The design preserves the existing voting-based slashing mechanism: proposers vote to slash offenders they observed in prior epochs, which allows the network to punish offenses that are not provable from L1 evidence alone. The new offenses extend this same mechanism to checkpoint-related misbehavior and to attestors who rubber-stamp invalid proposals, closing accountability gaps introduced alongside checkpoints.
 
-Replacing _Epoch Pruned_ with _Data Withholding_ narrows validator responsibility to what validators actually control — validating proposals and serving data on the p2p network — and removes their exposure to prover liveness. The explicit "slash even if the epoch is pruned" rule is motivated by preventing side deals where a committee withholds data from the broader network while releasing it to a specific prover.
+Replacing _Epoch Pruned_ with _Data Withholding_ narrows validator responsibility to what validators actually control — validating proposals and serving data on the p2p network — and removes their exposure to prover liveness. The explicit "slash even if the epoch is successfully proved" rule is motivated by preventing side deals where a committee withholds data from the broader network while releasing it to a specific prover.
 
 For _Validator Inactivity_, using block re-execution for fault attribution replaces the prior heuristic (using attestation count as a proxy for proposer-vs-attestor fault) with a direct check. This is now practical because all nodes re-execute blocks. The previous heuristic was easy to game: any node that had two validator addresses in the committee could create an attestation for their own block even if they did not release the relevant data, flagging all other validators as at fault. As for moving measurement to the end of each epoch, this allows for punishing inactive validators regardless of prover availability, and reduces the time to trigger the slash.
 
