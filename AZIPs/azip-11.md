@@ -4,7 +4,7 @@
 
 | `azip` | `title` | `description` | `author` | `discussions-to` | `status` | `category` | `created` |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 11 | Authorization | Authorization flow on behalf of an account | Jan Beneš (benesjan), Josh Crites (critesjosh), Michael Connor (iAmMichaelConnor), Nicolás Venturo (nventuro), Gregorio Juliana (Thunkar), Paperclip Minimizer (paperclip-minim) | TBD | Draft | Standard | 2026-05-07 |
+| 11 | Authorization | Authorization flow on behalf of an account | Jan Beneš (benesjan), Josh Crites (critesjosh), Michael Connor (iAmMichaelConnor), Nicolás Venturo (nventuro), Gregorio Juliana (Thunkar), Paperclip Minimizer (paperclip-minim) | https://github.com/AztecProtocol/governance/discussions/27 | Draft | Standard | 2026-05-07 |
 
 ## Abstract
 
