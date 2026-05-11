@@ -8,15 +8,15 @@
 
 ## Abstract
 
-This proposal hardens the rollup against governance actions that could halt finalization, price transactions out of inclusion, or revoke the user exit guarantee, by enforcing the constraints directly in the rollup contract. The escape hatch can only be set once, and is immutable thereafter. The `RewardDistributor` and `RewardBooster` addresses are likewise immutable post-deployment, and the `RewardDistributor` gains a permissionless path so old (non-canonical) rollups can still receive pre-funded checkpoint rewards. `setProvingCostPerMana` is rate-limited by a 30-day cooldown and a bounded per-update step. `updateStakingQueueConfig` is validated on every call to keep flush sizes positive. `setSlasher` is replaced by a 60-day queue/finalize flow, and `setLocalEjectionThreshold` is removed.
+This proposal hardens the rollup against governance actions that could halt finalization, price transactions out of inclusion, or revoke the user exit guarantee, by enforcing the constraints directly in the rollup contract. The escape hatch can only be set once, and is immutable thereafter. The `RewardDistributor` and `RewardBooster` addresses are likewise immutable post-deployment, and the `RewardDistributor` has been generalized to support hold funds earmarked for arbitrary addresses (e.g. old rollups). `setProvingCostPerMana` is rate-limited by a 30-day cooldown and a bounded per-update step. `updateStakingQueueConfig` is validated on every call to keep flush sizes positive. `setSlasher` is replaced by a 60-day queue/finalize flow, and `setLocalEjectionThreshold` is removed.
 
 ## Impacted Stakeholders
 
 - **Sequencers** — The slasher can no longer be swapped instantly; validators who object to a queued slasher have time to exit. The ejection floor cannot be raised out from under them. The flush-size invariants keep the queue admitting new sequencers.
-- **Provers** — The `RewardDistributor` and `RewardBooster` addresses are fixed for the life of the rollup, so governance cannot rotate them to endpoints that block, starve, or corrupt `submitEpochRootProof`. Provers on a rollup that is no longer canonical can still be rewarded via pre-funded subsidies held in the `RewardDistributor`. `provingCostPerMana` cannot move to extreme values instantly.
+- **Provers** — The `RewardDistributor` and `RewardBooster` addresses are fixed for the life of the rollup, so governance cannot rotate them to endpoints that block, starve, or corrupt `submitEpochRootProof`. Provers on a rollup that is no longer canonical can still be rewarded via subsidies held in the `RewardDistributor`. `provingCostPerMana` cannot move to extreme values instantly.
 - **Tokenholders** — Retain full upgrade authority, but lose the ability to issue a single transaction that bricks the rollup or revokes the exit guarantee.
 - **App Developers** — Get a stable, for-life exit guarantee once the escape hatch is set, and a fee model that cannot be priced out of existence in a single vote.
-- **Infrastructure Providers** — Reward-endpoint addresses are fixed at deployment and cannot be rotated by governance. Slasher changes are announced 60 days in advance via `PendingSlasherQueued`.
+- **Infrastructure Providers** — Reward-endpoint addresses are fixed at deployment and cannot be rotated by governance. Slasher changes are announced 60 days in advance via `PendingSlasherQueued`. Some ABI changes on new contracts.
 
 ## Motivation
 
@@ -53,18 +53,25 @@ The `EscapeHatchUpdated` event SHALL be renamed `EscapeHatchSet`.
 
 The `rewardDistributor` and `rewardBooster` address fields of `RollupStore.config` MUST be set once — in the constructor or `initialize` — and MUST NOT be mutable post-deployment. `setRewardConfig` SHALL be modified to no longer accept or write these two addresses; the remaining reward parameters (sequencer/prover split, checkpoint reward, etc.) retain their existing owner-gated semantics. Rotating either address requires redeploying the rollup via `Registry.addRollup`.
 
-### Old Rollup Subsidy Path
+### Per-Address Subsidy Path
 
-`IRewardDistributor` SHALL gain two new functions:
+`IRewardDistributor` exposes:
 
-- `availableTo(address rollup) external view returns (uint256)` — returns `ASSET.balanceOf(distributor) - aggregateDebt` when `rollup == canonicalRollup()`, and `specificOld[rollup]` otherwise.
-- `subsidizeOld(address rollup, uint256 amount) external` — permissionless. Pulls `amount` of `ASSET` from the caller, increments `specificOld[rollup]` and `aggregateDebt` by `amount`.
+- `availableTo(address recipient) external view returns (uint256)` — when `recipient == canonicalRollup()`, returns `ASSET.balanceOf(distributor) - totalEarmarkedBalance + specificRecipientBalance[recipient]`. Otherwise returns `specificRecipientBalance[recipient]`. The canonical rollup is the only address with access to the implicit (un-earmarked) pool; everyone else sees only their earmarked balance.
+- `subsidizeAddress(address recipient, uint256 amount) external` — permissionless. Reverts with `RewardDistributor__ZeroRollup` if `recipient == address(0)`. Pulls amount of `ASSET` from the caller and increments both `specificRecipientBalance[recipient]` and `totalEarmarkedBalance` by amount. No validation is performed that recipient is a registered rollup, or a rollup at all — any address can be earmarked.
 
-`RewardDistributor.claim(address to, uint256 amount)` SHALL authorize the caller by `amount <= availableTo(msg.sender)` rather than `msg.sender == canonicalRollup()`. When `msg.sender != canonicalRollup()`, `claim` MUST decrement `specificOld[msg.sender]` and `aggregateDebt` by `amount` before transferring. `recover(asset, to, amount)`, when `asset == ASSET`, MUST leave `availableTo(canonicalRollup())` non-negative so the owner cannot drain reserved subsidy balances.
+`RewardDistributor.claim(address to, uint256 amount)` authorizes the caller implicitly through balance accounting in the internal `_transfer(msg.sender, to, amount)`:
+- When `msg.sender == canonicalRollup()`, the implicit pool (balanceOf - totalEarmarkedBalance) is consumed first; any shortfall is drawn from `specificRecipientBalance[msg.sender]`.
+- For any other caller, only `specificRecipientBalance[msg.sender]` is available.
+- Insufficient funds revert with `RewardDistributor__InsufficientAvailable(requested, available)`. When earmarked funds are consumed, both `specificRecipientBalance[msg.sender]` and totalEarmarkedBalance are decremented by the amount drawn from the earmarked bucket.
 
-`RewardLib.handleRewardsAndFees` SHALL read `distributor.availableTo(address(this))` and clamp `amountToClaim` to that value before calling `distributor.claim(address(this), amountToClaim)`. 
+`recoverFrom(address from, address to, uint256 amount)` is governance-only (registry owner) and shares the same `_transfer` accounting path as `claim`, with `from` substituted for `msg.sender`. Because `totalEarmarkedBalance` is decremented in lockstep with `specificRecipientBalance[from]`, governance recovery cannot drive `availableTo(canonicalRollup())` negative: the implicit-pool component (balanceOf - totalEarmarkedBalance) is invariant under earmarked draws, and direct-pool draws against the canonical address are bounded by the contract's ASSET balance.
 
-Any funds transferred to the `RewardDistributor` without invoking `subsidizeOld` accrue to the canonical rollup via `balanceOf − aggregateDebt`, preserving the existing "mint/airdrop into the distributor" funding path.
+The pre-existing `recover(address,address,uint256)` ABI shape was renamed to `recoverFrom` to avoid a 4-byte selector collision with the previous `recover(_asset,_to,_amount)`. Wrong-asset recovery moves to `recoverWrongAsset(address asset, address to, uint256 amount)`, which is also governance-only and reverts with `RewardDistributor__WrongRecoverMechanism` if `asset == ASSET`.
+
+`RewardLib.handleRewardsAndFees` reads `distributor.availableTo(address(this))` and clamps `amountToClaim` to that value before calling `distributor.claim(address(this), amountToClaim)`.
+
+Any funds transferred to the `RewardDistributor` without invoking subsidizeAddress accrue to the canonical rollup via `balanceOf - totalEarmarkedBalance`, preserving the "mint/airdrop into the distributor" funding path.
 
 ### Legacy Reward Distributor Handover
 
@@ -130,7 +137,7 @@ An earlier draft wrapped every `RewardDistributor` / `RewardBooster` call in `tr
 - Future gas repricings that invalidate hand-tuned gas caps and either brick the honest path (cap too low) or let a malicious endpoint consume the submitter's remaining gas (cap too high).
 - Re-entrancy or state-mutation side effects that `try/catch` does not restrain.
 
-Fixing the addresses at deployment retires the entire class. The only legitimate use case for mutability — keeping an old rollup's provers and sequencers rewarded after a new canonical is promoted — is served by the old rollup subsidy path on the distributor itself, which requires no governance action (`subsidizeOld` is permissionless).
+Fixing the addresses at deployment retires the entire class. The only legitimate use case for mutability — keeping an old rollup's provers and sequencers rewarded after a new canonical is promoted — is served by the per-address subsidy path on the distributor itself, which requires no governance action (`subsidizeAddress` is permissionless).
 
 ### What Governance Can Still Do
 
@@ -150,7 +157,7 @@ A rolling window bounds cumulative change by re-anchoring to the value at window
 
 ## Backwards Compatibility
 
-1. **ABI**: `setSlasher` → `queueSetSlasher` / `cancelSetSlasher` / `finalizeSetSlasher`. `setLocalEjectionThreshold` removed. `updateEscapeHatch` → `setEscapeHatch`. `EscapeHatchUpdated` → `EscapeHatchSet`. `LocalEjectionThresholdUpdated` removed. New events `PendingSlasherQueued`, `PendingSlasherCancelled`. `setRewardConfig` SHALL no longer accept or write `rewardDistributor` / `rewardBooster`. `IRewardDistributor` gains `availableTo(address)` and `subsidizeOld(address,uint256)`; `claim` authorization changes from `msg.sender == canonicalRollup()` to `amount <= availableTo(msg.sender)`.
+1. **ABI**: `setSlasher` → `queueSetSlasher` / `cancelSetSlasher` / `finalizeSetSlasher`. `setLocalEjectionThreshold` removed. `updateEscapeHatch` → `setEscapeHatch`. `EscapeHatchUpdated` → `EscapeHatchSet`. `LocalEjectionThresholdUpdated` removed. New events `PendingSlasherQueued`, `PendingSlasherCancelled`. `setRewardConfig` SHALL no longer accept or write `rewardDistributor` / `rewardBooster`; its parameter type narrows to `MutableRewardConfig` (sequencer split / checkpoint reward only). `IRewardDistributor` gains `availableTo(address)`, `subsidizeAddress(address,uint256)`, `recoverFrom(address,address,uint256)`, and `recoverWrongAsset(address,address,uint256)`; the prior `recover(address,address,uint256)` is removed. `claim` authorization changes from `msg.sender == canonicalRollup()` to `amount <= availableTo(msg.sender)`.
 2. **Timing**: Slasher replacements take effect 60 days after queueing.
 3. **Parameter constraints**: `setProvingCostPerMana` reverts on cooldown violation, step violation, or `v < 2`. `updateStakingQueueConfig` reverts on zero flush fields (matching the existing constructor invariant).
 4. **Escape hatch finality**: `setEscapeHatch` is final for the life of the rollup; deployers must verify the address before calling.
@@ -160,7 +167,7 @@ A rolling window bounds cumulative change by re-anchoring to the value at window
 
 1. **Escape hatch one-shot**: `setEscapeHatch(nonZero)` succeeds once; second call reverts with `EscapeHatchAlreadySet`; zero-address call reverts with `EscapeHatchCannotBeZero`.
 2. **Reward address immutability**: no reachable post-deployment path mutates `RollupStore.config.rewardDistributor` or `RollupStore.config.rewardBooster`; `setRewardConfig` cannot write either field.
-3. **Old rollup subsidy path**: after a second rollup is registered as canonical, `subsidizeOld(oldRollup, amount)` credits `availableTo(oldRollup)` without reducing `availableTo(newCanonical)`; the old rollup proves an epoch and successfully claims up to its subsidy; the canonical rollup cannot draw from `specificOld`; `recover` on the reward asset cannot reduce `availableTo(canonicalRollup())` below zero.
+3. **Per-address subsidy path**: after a second rollup is registered as canonical, `subsidizeAddress(oldRollup, amount)` credits `availableTo(oldRollup)` without reducing `availableTo(newCanonical)`; the old rollup proves an epoch and successfully claims up to its subsidy; the canonical rollup cannot draw from another address's `specificRecipientBalance`; `recoverFrom` cannot drive `availableTo(canonicalRollup())` negative; `recoverWrongAsset` reverts when called with `ASSET`.
 4. **Proving cost floor / step / cooldown**: `setProvingCostPerMana(0|1)` reverts with `ProvingCostBelowFloor`; from 1000, setting 1501 or 666 reverts with `ProvingCostStepExceeded`, while 1500 / 667 succeed; the first post-init update lands immediately, a second within 30 days reverts with `ProvingCostCooldown`.
 5. **Flush-size invariants on update**: `updateStakingQueueConfig` with zero `normalFlushSizeMin` or `normalFlushSizeQuotient` reverts.
 6. **Slasher queue flow**: `queueSetSlasher` / `cancelSetSlasher` are owner-only; `finalizeSetSlasher` is permissionless, reverts before 60 days with `SlasherNotReady`, and applies the change after. Queue overwrite resets the timer; cancel without a pending queue reverts with `NoPendingSlasher`.
@@ -172,9 +179,9 @@ A rolling window bounds cumulative change by re-anchoring to the value at window
 
 Because `rewardDistributor` and `rewardBooster` are set at construction and never mutated, the rollup does not need to defend against reverts, return-bombs, gas repricing, adversarial return values, or re-entrancy from these endpoints beyond what holds at deployment time. Deployers MUST audit both contracts before construction; a misdeployment is unrecoverable without redeploying the rollup via `Registry.addRollup`.
 
-### Old Rollup Subsidy Isolation
+### Per-Address Subsidy Isolation
 
-`RewardDistributor.aggregateDebt` isolates old rollup balances from the canonical rollup's claim, so `subsidizeOld(oldRollup, amount)` cannot reduce `availableTo(canonicalRollup())`. `recover(ASSET, to, amount)` MUST revert if it would reduce `availableTo(canonicalRollup())` below zero, preventing an owner-driven drain of reserved old rollup funds. `subsidizeOld` is permissionless; any party can fund an arbitrary address, but funds so committed are only withdrawable by that address via `claim`.
+`RewardDistributor.totalEarmarkedBalance` isolates earmarked balances from the canonical rollup's implicit pool, so `subsidizeAddress(recipient, amount)` cannot reduce `availableTo(canonicalRollup())`. `recoverFrom` shares the same accounting path as `claim`, so governance recovery cannot drive `availableTo(canonicalRollup())` negative; `recoverWrongAsset` refuses `ASSET` and therefore cannot bypass that accounting. `subsidizeAddress` is permissionless; any party can fund an arbitrary address, but funds so committed are only withdrawable by that address via `claim` (or by governance via `recoverFrom`).
 
 ### Rate Limit and Queue Bypass
 
