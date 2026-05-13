@@ -33,9 +33,8 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 | O1 | Compressed Poseidon2 internal layout | Mega flavor, all Chonk-flavored circuits |
 | O2 | Multi-app private kernel variants | Private kernel `init` and `inner` |
 | O3 | Delayed / batch merge protocol | Goblin merge, hiding kernel |
-| O4 | Top-of-trace ZK masking | All ZK-enabled flavors |
-| O5 | Joint MegaZK + translator sumcheck and PCS | Final Chonk proof |
-| O6 | Fixed lookup tables in recursive IPA verifier | Root rollup recursive IPA |
+| O4 | Joint MegaZK + translator sumcheck and PCS | Final Chonk proof |
+| O5 | Fixed lookup tables in recursive IPA verifier | Root rollup recursive IPA |
 
 ### Optimization O1: Compressed Poseidon2 internal layout
 
@@ -79,20 +78,7 @@ Per-step merge prover/verifier costs that previously scaled linearly with IVC ch
 
 **Security.** Soundness relies on the batch merge being equivalent to the sequence of per-step merges it replaces and on every accumulated circuit being bound to the running hash that the batch proof references. Implementations MUST audit that no per-step merge call survives in the accumulation path and that the batch merge consumes every committed subtable.
 
-### Optimization O4: Top-of-trace ZK masking
-
-The random values that provide zero-knowledge in the proof system used to sit at the end of every witness polynomial. v5 moves them to fixed positions at the top instead. This is a small structural change with two effects: the polynomial commitment scheme's working size is no longer tied to the dyadic (next-power-of-two) circuit size and can run only to the actual end of the trace, and the verifier-side polynomial that disables the masking rows becomes independent of circuit size, removing a per-circuit indicator polynomial the verifier previously had to carry.
-
-Committed witness polynomials extend to the actual trace length rather than the next power of two; recursive verifiers no longer carry a per-circuit padding-indicator polynomial. The change is also a prerequisite for non-dyadic PCS proving in a follow-up.
-
-- On every ZK-enabled proving flavor, the masking values MUST occupy fixed rows at the top of each witness polynomial (row 0 is the conventional zero row required for shifts; rows 1, 2, 3 hold the masking randomness).
-- The Honk relation MUST be disabled on the masking rows by multiplication with a polynomial that vanishes on those rows and equals 1 elsewhere.
-- The permutation argument's boundary condition MUST be enforced as an explicit constraint at the new top-of-trace offset rather than relying on the previous trace-position convention.
-- The Goblin merge protocol MUST align its table polynomials with the shifted trace so that op-queue commitments stay consistent across the merge boundary.
-
-**Security.** The masking values MUST come from a domain the verifier cannot influence; the move from tail to top does not change that requirement. The row-disabling polynomial's coverage of the masking rows and the new boundary condition for the permutation argument MUST be audited.
-
-### Optimization O5: Joint MegaZK + translator sumcheck and PCS
+### Optimization O4: Joint MegaZK + translator sumcheck and PCS
 
 The MegaZK flavor (used to prove the hiding kernel) and the translator circuit previously had independent sumchecks and independent polynomial commitment openings. v5 batches them into a single joint sumcheck and a single joint Shplemini/KZG opening. The two relations are combined under a single batching challenge derived from the shared transcript after all pre-sumcheck commitments are absorbed; the smaller circuit is embedded into the larger circuit's round count via extension-by-zero in the unused rounds.
 
@@ -107,7 +93,7 @@ One full sumcheck and one full polynomial-commitment opening are eliminated from
 
 **Security.** Soundness reduces to the independent soundness of the MegaZK and translator relations combined under a verifier-supplied batching challenge. That challenge MUST be drawn after both circuits' commitments are absorbed into the transcript. The joint zero-knowledge masking MUST cover both circuits' witness contributions.
 
-### Optimization O6: Fixed lookup tables in recursive IPA verifier
+### Optimization O5: Fixed lookup tables in recursive IPA verifier
 
 The recursive IPA verifier (the circuit that verifies the inner-product argument inside the root rollup) used to spend most of its gates on a 32,768-point multi-scalar multiplication over the Grumpkin SRS. v5 replaces the per-element ROM-table method previously used for those scalar multiplications with 8-bit fixed plookup tables, exploiting the fact that the SRS is fixed at protocol genesis and known to the verifier. The first SRS element is still multiplied via the legacy method to keep the lookup row count within 2²³. Native (non-recursive) IPA verification is unchanged.
 
@@ -140,7 +126,7 @@ See implementation details for specific per-optimization testing.
 
 ## Reference Implementation
 
-The reference implementation lives in `AztecProtocol/aztec-packages`. Each optimization landed via the following PR(s): O1 #22652, O2 #23076, O3 #22775, O4 #22334 (with prerequisite #22396), O5 #21246 / #21376 / #21263, O6 #22320.
+The reference implementation lives in `AztecProtocol/aztec-packages`. Each optimization landed via the following PR(s): O1 #22652, O2 #23076, O3 #22775, O4 #21246 / #21376 / #21263, O5 #22320.
 
 ## Security Considerations
 
