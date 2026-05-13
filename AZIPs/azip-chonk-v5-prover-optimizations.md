@@ -36,7 +36,6 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 | O4 | Top-of-trace ZK masking | All ZK-enabled flavors |
 | O5 | Joint MegaZK + translator sumcheck and PCS | Final Chonk proof |
 | O6 | Fixed lookup tables in recursive IPA verifier | Root rollup recursive IPA |
-| O7 | Dyadic circuit-size constants | Proof-length and folding-size bounds |
 
 ### Optimization O1: Compressed Poseidon2 internal layout
 
@@ -121,20 +120,6 @@ Root-rollup active gate rows drop from about 12.9M to 6.35M, halving the dyadic 
 
 **Security.** The plookup tables MUST be reconstructible by any verifier from the canonical Grumpkin SRS without prover-supplied input. Because tables are constructed per proof rather than baked into the VK, prover and verifier MUST agree exactly on the SRS source, the table width, and the encoding scheme.
 
-### Optimization O7: Dyadic circuit-size constants
-
-Two protocol constants that bound circuit and proof sizes are updated. The maximum log circuit size for Ultra-flavor proofs changes from 28 to 25 (matching the actual SRS size). The maximum log circuit size foldable inside Chonk changes from 21 to 24 (the real bound under batch-2 multi-PCS, applying to every folded circuit, apps and kernels alike).
-
-The Ultra-flavor recursive proof length drops from 449 to 410 field elements (smaller proofs, fewer rollup gates). The maximum circuit size foldable by Chonk rises from 2²¹ to 2²⁴, lifting a ceiling that had been binding on real applications. The final Chonk proof length is unchanged.
-
-- The maximum log circuit size for Ultra-flavor proofs MUST be 25.
-- The maximum log circuit size foldable inside Chonk MUST be 24.
-- All derived proof-length constants, VKs, test fixtures, and on-chain verifier sizes MUST be regenerated under the new values.
-
-**Rationale.** The previous Ultra bound of 28 was a historical placeholder that exceeded the actual SRS, so every Ultra proof carried padding the verifier could not use. The previous Chonk fold bound of 21 was becoming a binding constraint on real applications. The new values match what the SRS and folding scheme actually support.
-
-**Security.** Lowering the Ultra proof-size bound narrows the verifier's accepted range and will cause it to reject v4-shaped proofs. Raising the Chonk fold bound enlarges the prover's accepted circuit-size range; downstream consumers (the recursive verifier and trace allocation in particular) MUST tolerate the new maximum without overflow.
-
 ## Rationale
 
 Per-optimization design rationale is stated inside the corresponding subsection under [Specification](#specification).
@@ -155,7 +140,7 @@ See implementation details for specific per-optimization testing.
 
 ## Reference Implementation
 
-The reference implementation lives in `AztecProtocol/aztec-packages`. Each optimization landed via the following PR(s): O1 #22652, O2 #23076, O3 #22775, O4 #22334 (with prerequisite #22396), O5 #21246 / #21376 / #21263, O6 #22320, O7 #21762.
+The reference implementation lives in `AztecProtocol/aztec-packages`. Each optimization landed via the following PR(s): O1 #22652, O2 #23076, O3 #22775, O4 #22334 (with prerequisite #22396), O5 #21246 / #21376 / #21263, O6 #22320.
 
 ## Security Considerations
 
