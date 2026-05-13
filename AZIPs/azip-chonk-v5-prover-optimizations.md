@@ -8,7 +8,7 @@
 
 ## Abstract
 
-This AZIP specifies a series of circuit-level optimizations to the Chonk client-side proving stack shipped in v5, targeting prover time, proof size, and native verification time. Each optimization is specified independently below. Additional v5 optimizations may be appended during the `Draft` and `RFD` phases.
+This AZIP catalogs the largest circuit-level optimizations to the Chonk client-side proving stack shipped in v5, targeting prover time, proof size, and native verification time. It is not an exhaustive list of v5 backend changes; smaller changes that ship with the release are not individually cataloged here. Each optimization is specified independently below. Additional major optimizations may be appended during the `Draft` and `RFD` phases.
 
 ## Impacted Stakeholders
 
