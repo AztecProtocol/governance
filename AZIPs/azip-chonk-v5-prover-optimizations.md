@@ -37,7 +37,6 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 | O5 | Joint MegaZK + translator sumcheck and PCS | Final Chonk proof |
 | O6 | Fixed lookup tables in recursive IPA verifier | Root rollup recursive IPA |
 | O7 | Dyadic circuit-size constants | Proof-length and folding-size bounds |
-| O8 | Databus relation simplification and app-calldata column extension | Mega flavor databus |
 
 ### Optimization O1: Compressed Poseidon2 internal layout
 
@@ -136,19 +135,6 @@ The Ultra-flavor recursive proof length drops from 449 to 410 field elements (sm
 
 **Security.** Lowering the Ultra proof-size bound narrows the verifier's accepted range and will cause it to reject v4-shaped proofs. Raising the Chonk fold bound enlarges the prover's accepted circuit-size range; downstream consumers (the recursive verifier and trace allocation in particular) MUST tolerate the new maximum without overflow.
 
-### Optimization O8: Databus relation simplification and app-calldata column extension
-
-The databus (the lookup mechanism that ties kernel-circuit values to app-circuit values) previously carried a boolean witness polynomial per column to flag which rows are read accesses. v5 rewrites the underlying lookup-correctness check so those flag polynomials are no longer needed and removes them from every column. Separately, the databus gains additional columns to carry kernel-to-app calldata for multiple apps per kernel invocation, matching the multi-app kernel variants (see [O2](#optimization-o2-multi-app-private-kernel-variants)). The number of bus columns grows from three to five: one for kernel calldata, three for per-app calldata (one per app slot), and one for return data.
-
-The flag-polynomial removal is a strict witness-set reduction at no verifier cost. The column extension supplies the capacity the multi-app kernel variants need; together, each new column costs three derived polynomials instead of four.
-
-- The Mega-flavor databus MUST expose exactly one kernel-calldata column, three per-app calldata columns (one per app slot), and one return-data column.
-- The Mega-flavor witness set MUST NOT include the previous per-column read-flag polynomials.
-
-**Rationale.** The flag polynomials are redundant once the lookup-correctness check is split into two branches: one for "is this row a read" and one for "what is the read count". Removing them is free. The column extension is dictated by O2: a 3-app kernel needs to route calldata to three distinct app slots. The two changes ship together because the simplification reduces the per-column cost of adding each new bus.
-
-**Security.** The new lookup-correctness formulation MUST be audited against the previous flag-based version for equisatisfiability on every well-formed read pattern. Each per-app calldata column MUST be constrained to carry only the calldata of its corresponding app slot.
-
 ## Rationale
 
 Per-optimization design rationale is stated inside the corresponding subsection under [Specification](#specification).
@@ -169,7 +155,7 @@ See implementation details for specific per-optimization testing.
 
 ## Reference Implementation
 
-The reference implementation lives in `AztecProtocol/aztec-packages`. Each optimization landed via the following PR(s): O1 #22652, O2 #23076, O3 #22775, O4 #22334 (with prerequisite #22396), O5 #21246 / #21376 / #21263, O6 #22320, O7 #21762, O8 #22610 / #23010.
+The reference implementation lives in `AztecProtocol/aztec-packages`. Each optimization landed via the following PR(s): O1 #22652, O2 #23076, O3 #22775, O4 #22334 (with prerequisite #22396), O5 #21246 / #21376 / #21263, O6 #22320, O7 #21762.
 
 ## Security Considerations
 
