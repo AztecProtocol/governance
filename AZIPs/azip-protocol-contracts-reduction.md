@@ -2,13 +2,13 @@
 
 ## Preamble
 
-| `azip` | `title`                      | `description`                                                                                                                 | `author`                                                                                            | `discussions-to` | `status` | `category` | `created`  |
-| ------ | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | ---------------- | -------- | ---------- | ---------- |
+| `azip` | `title`                      | `description`                                                                                                                 | `author`                                                                                                     | `discussions-to` | `status` | `category` | `created`  |
+| ------ | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | ---------------- | -------- | ---------- | ---------- |
 |        | Reduce Protocol Contract Set | Remove AuthRegistry, MultiCallEntrypoint, and PublicChecks from the protocol contracts and down-shift the remaining addresses | David Banks (@dbanks12), Grego (@Thunkar), Nico (@nventuro), Mike (@iAmMichaelConnor), Ilyas (@IlyasRidhuan) | N/A              | Draft    | Core       | 2026-05-13 |
 
 ## Abstract
 
-This AZIP removes `AuthRegistry`, `MultiCallEntrypoint`, and `PublicChecks` from the protocol contract set and reassigns the remaining three contracts — `ContractInstanceRegistry`, `ContractClassRegistry`, and `FeeJuice` — to addresses `1`, `2`, and `3`. The demoted contracts may continue to be deployed as ordinary user-space contracts without privileged status.
+This AZIP removes `AuthRegistry`, `MultiCallEntrypoint`, and `PublicChecks` from the protocol contract set and reassigns the remaining three contracts — `ContractClassRegistry`, `ContractInstanceRegistry`, and `FeeJuice` — to addresses `1`, `2`, and `3` respectively. The demoted contracts will continue to be available as ordinary user-space contracts.
 
 ## Impacted Stakeholders
 
@@ -40,15 +40,21 @@ The protocol contract address space MUST be exactly:
 
 | Address | Contract                   |
 | ------- | -------------------------- |
-| `1`     | `ContractInstanceRegistry` |
-| `2`     | `ContractClassRegistry`    |
+| `1`     | `ContractClassRegistry`    |
+| `2`     | `ContractInstanceRegistry` |
 | `3`     | `FeeJuice`                 |
 
 All other low-integer addresses MUST be treated as unassigned and MUST NOT resolve to any protocol contract. The genesis protocol contracts tree MUST be rebuilt over this three-entry set, and its root — referenced by the protocol circuits and the rollup contract — MUST be updated accordingly.
 
 ### Constants
 
-The protocol contract address constants for `ContractInstanceRegistry` (`2` → `1`), `ContractClassRegistry` (`3` → `2`), and `FeeJuice` (`5` → `3`) MUST be updated. These addresses are referenced throughout the stack — protocol circuits, the AVM, the sequencer, the PXE, `aztec.js` — via Noir/TypeScript/C++ constants generated from a single source, so this is not a manual per-callsite migration. Every constant, manifest entry, deployer registration, and address-resolution path keyed on the three demoted contracts as protocol contracts MUST be removed.
+The protocol contract address constants for `ContractClassRegistry` (`3` → `1`) and `FeeJuice` (`5` → `3`) MUST be updated; `ContractInstanceRegistry` retains its existing address of `2`. These addresses are referenced throughout the stack — protocol circuits, the AVM, the sequencer, the PXE, `aztec.js` — via Noir/TypeScript/C++ constants generated from a single source, so this is not a manual per-callsite migration. Every constant, manifest entry, deployer registration, and address-resolution path keyed on the three demoted contracts as protocol contracts MUST be removed.
+
+### Canonical deployment of `AuthRegistry`
+
+`AuthRegistry` MUST be deployed as an ordinary contract at a deterministic address derived from its contract class id and a fixed salt, with `deployer = address(0)`. Its address MUST be enumerated in the AZUP that activates this AZIP (the v5 AZUP) so that all network participants share a single canonical `AuthRegistry`.
+
+This requirement exists because the default **public setup allowlist**, which every node consults when validating transactions, references `AuthRegistry._set_authorized` and `AuthRegistry.set_authorized`. For nodes to converge on the same allowlist, they must share the same `AuthRegistry` address.
 
 ## Rationale
 
@@ -58,18 +64,18 @@ The protocol contract address constants for `ContractInstanceRegistry` (`2` → 
 
 ## Backwards Compatibility
 
-This is a breaking change. Every protocol contract address changes, and three contracts cease to be protocol contracts. Contracts and tooling that hard-code literal protocol contract addresses MUST be updated; imports of the demoted contracts MUST be repointed to a user-space deployment; wallets relying on `AuthRegistry` for public authwits MUST select a specific deployment. Activation coincides with a network upgrade. There is no in-band migration path; clients and contracts compiled against the old constants will not interoperate with a chain that has activated this AZIP.
+This is a breaking change. `ContractClassRegistry` and `FeeJuice` change protocol contract addresses, `ContractInstanceRegistry` retains its address of `2`, and three contracts cease to be protocol contracts. Contracts and tooling that hard-code literal protocol contract addresses MUST be updated; imports of the demoted contracts MUST be repointed to a user-space deployment, which for `AuthRegistry` is a standard deployment enumerated in the v5 AZUP. Activation coincides with a network upgrade. There is no in-band migration path; clients and contracts compiled against the old constants will not interoperate with a chain that has activated this AZIP.
 
 ## Test Cases
 
-1. **Genesis tree.** The protocol contracts tree contains exactly three entries (`ContractInstanceRegistry` at `1`, `ContractClassRegistry` at `2`, `FeeJuice` at `3`) and its root matches the value embedded in the rollup contract.
+1. **Genesis tree.** The protocol contracts tree contains exactly three entries (`ContractClassRegistry` at `1`, `ContractInstanceRegistry` at `2`, `FeeJuice` at `3`) and its root matches the value embedded in the rollup contract.
 2. **Removed contracts are not protocol contracts.** Resolving addresses `4`, `5`, or `6` MUST NOT return a protocol contract.
 3. **End-to-end tests.** The existing end-to-end suite — private/public transfers, contract deployment, fee payment, and authwit flows that explicitly deploy `AuthRegistry` — passes against the updated constants.
 4. **Constant consistency.** The Noir, TypeScript, and C++ exports of each protocol contract address resolve to the same value.
 
 ## Security Considerations
 
-**Loss of enshrined status for `AuthRegistry`.** Public authwit checks have historically resolved through `AuthRegistry` at a known protocol address. After this AZIP activates, callers must select a specific deployment they trust.
+**Loss of enshrined status for `AuthRegistry`.** Public authwit checks have historically resolved through `AuthRegistry` at a known protocol address. After this AZIP activates, callers must use the canonical user-space deployment enumerated in the v5 AZUP. Because that deployment is also referenced by the default public setup allowlist enforced by every node, all participants in the network share the same `AuthRegistry` address; the loss of enshrinement is partial in this respect.
 
 **Loss of enshrined status for `MultiCallEntrypoint`.** Accounts that use `MultiCallEntrypoint` already encode their entrypoint address. Removing the enshrined deployment does not weaken any account's authentication model, but accounts choosing differently-deployed instances will route through different code and storage. Account libraries SHOULD pin a specific deployment.
 
