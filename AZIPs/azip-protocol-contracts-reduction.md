@@ -1,10 +1,10 @@
-# AZIP-12: Reduce Protocol Contract Set
+# Reduce Protocol Contract Set
 
 ## Preamble
 
 | `azip` | `title`                      | `description`                                                                                                                 | `author`                | `discussions-to` | `status` | `category` | `created`  |
 | ------ | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ----------------------- | ---------------- | -------- | ---------- | ---------- |
-| 12     | Reduce Protocol Contract Set | Remove AuthRegistry, MultiCallEntrypoint, and PublicChecks from the protocol contracts and down-shift the remaining addresses | David Banks (@dbanks12) | N/A              | Draft    | Core       | 2026-05-13 |
+|        | Reduce Protocol Contract Set | Remove AuthRegistry, MultiCallEntrypoint, and PublicChecks from the protocol contracts and down-shift the remaining addresses | David Banks (@dbanks12) | N/A              | Draft    | Core       | 2026-05-13 |
 
 ## Abstract
 
