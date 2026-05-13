@@ -53,14 +53,14 @@ Mega circuits dominate Chonk proving time and Poseidon2 dominates Mega arithmeti
 
 The private kernel previously verified one application call per invocation, so a transaction touching `N` app calls required `N` kernel iterations. v5 adds variants of the `init` and `inner` kernels that absorb 2 or 3 app calls per invocation. The PXE selects the largest variant that fits the remaining work at each step, capped at 3 apps per iteration. The public-input outputs of an `N`-app variant are bit-identical to those produced by the corresponding chain of single-app kernels. The variants are functionally equivalent compositions of the same per-app accumulator, packed into one circuit.
 
-Each kernel iteration carries per-circuit overhead (folding, Oink proving) that is independent of how much work the iteration does. Batching `N` apps into one iteration amortizes that overhead and removes `N − 1` iterations from the chain.
+Each kernel iteration carries per-circuit overhead (folding, witness commitment) that is independent of how much work the iteration does. Batching `N` apps into one iteration amortizes that overhead and removes `N − 1` iterations from the chain.
 
 - The new variants MUST be registered in the kernel VK tree at indices 65 (`init_3`), 66 (`init_2`), 67 (`inner_2`), 68 (`inner_3`).
 - The maximum number of app calls per kernel invocation MUST be 3.
 - The public-input output of an `N`-app variant MUST equal that produced by the equivalent chain of single-app kernels on the same inputs.
 - Every downstream kernel circuit (`inner`, `reset`, `tail`, `tail_to_public`) MUST accept any of the new variants as a valid predecessor.
 
-**Rationale.** Per-app-count variants with distinct VKs were chosen over a single padded `MAX_APPS` kernel for two reasons. First, a padded 3-app kernel proving a single app would be strictly more expensive than the existing single-app kernel, defeating the optimization. Second, distinct VKs let the recursive verifier dispatch on VK index rather than on a runtime app-count input, eliminating a class of dispatch-mismatch attacks.
+**Rationale.** Per-app-count variants with distinct VKs were chosen over a single padded maximum-apps kernel for two reasons. First, a padded 3-app kernel proving a single app would be strictly more expensive than the existing single-app kernel, defeating the optimization. Second, distinct VKs let the recursive verifier dispatch on VK index rather than on a runtime app-count input, eliminating a class of dispatch-mismatch attacks.
 
 **Security.** Because dispatch happens by VK index rather than by a runtime input, a prover cannot prove under a smaller variant while claiming a larger app count or vice versa. The downstream allow-list MUST be extended consistently across every consumer.
 
@@ -121,8 +121,6 @@ Any L1 verifier contract changes accompanying the v5 release are out of scope of
 ## Test Cases
 
 A canonical set of IVC inputs covering the v5 circuit set is pinned at AZIP acceptance time. For each pinned flow, the verification key derived from the v5 circuit bytecode MUST equal the pinned VK, and the corresponding proof MUST verify against the pinned VKs.
-
-See implementation details for specific per-optimization testing.
 
 ## Reference Implementation
 
