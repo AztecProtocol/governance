@@ -4,7 +4,7 @@
 
 | `azip` | `title` | `description` | `author` | `discussions-to` | `status` | `category` | `created` |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 5 | Optimize Prover Rewards for Consistency | Retunes `RewardBooster` parameters to penalize inconsistent provers and favor committed operators. | Emre (@EmrePiconbello) | https://forum.aztec.network/t/proposal-optimizing-prover-rewards-for-more-consistency/8528 | Draft | Core | 2026-04-21 |
+| 5 | Optimize Prover Rewards for Consistency | Retunes `RewardBooster` parameters to penalize inconsistent provers and favor committed operators. | Emre (@EmrePiconbello) | https://forum.aztec.network/t/proposal-optimizing-prover-rewards-for-more-consistency/8528 | Accepted | Core | 2026-04-21 |
 
 > AZIP number is a placeholder — to be assigned by an editor upon submission.
 
