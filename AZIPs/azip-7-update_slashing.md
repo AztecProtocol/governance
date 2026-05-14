@@ -8,7 +8,7 @@
 
 ## Abstract
 
-This AZIP updates the set of slashing offenses enforced by the Aztec protocol. It introduces new offenses covering checkpoint-related proposer misbehavior (submitting a block proposal after a checkpoint, invalid checkpoint proposals, block proposals containing clearly invalid transactions), a new offense on attestations (attesting to an invalid proposal), and revises existing offenses by replacing _Epoch Pruned_ with a _Data Withholding_ check and refining how _Validator Inactivity_ is measured and attributed.
+This AZIP updates the set of slashing offenses enforced by the Aztec protocol. It introduces new offenses covering checkpoint-related proposer misbehavior (submitting a block proposal after a checkpoint, invalid checkpoint proposals), a new offense on attestations (attesting to an invalid proposal), and revises existing offenses by replacing _Epoch Pruned_ with a _Data Withholding_ check and refining how _Validator Inactivity_ is measured and attributed.
 
 ## Impacted Stakeholders
 
@@ -63,10 +63,6 @@ A proposer sent a block proposal after the checkpoint proposal had already been 
 #### Invalid Checkpoint Proposal
 
 A proposer broadcast an invalid checkpoint proposal over the peer-to-peer network, such as one where the checkpoint header doesn't match the expected state, or does not follow from all prior block proposals in the slot. The proposer MUST be penalized. This is a slot-based offense, and an extension of the _Invalid Block Proposal_ offense.
-
-#### Block Proposal With Invalid Transactions
-
-A proposer broadcast a block proposal containing clearly invalid transactions, such as transactions with an incorrect chain ID. The proposer MUST be penalized. This is a slot-based offense. This is an extension to slashing for _Invalid Block Proposals_, which didn't account for this scenario.
 
 ### New Offense on Attestations
 
