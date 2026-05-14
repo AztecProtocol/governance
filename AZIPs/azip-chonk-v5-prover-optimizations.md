@@ -1,10 +1,10 @@
-# Chonk v5 Prover Optimizations
+# AZIP-13: Chonk v5 Prover Optimizations
 
 ## Preamble
 
 | `azip` | `title`                       | `description`                                                                                          | `author`                       | `discussions-to` | `status` | `category` | `created`  |
 | ------ | ----------------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------ | ---------------- | -------- | ---------- | ---------- |
-|        | Chonk v5 Prover Optimizations | A catalog of circuit-level optimizations to the Chonk client-side proving stack shipped in version 5.  | Luke Edwards (@ledwards2225)   | N/A              | Draft    | Core       | 2026-05-13 |
+| 13 | Chonk v5 Prover Optimizations | A catalog of circuit-level optimizations to the Chonk client-side proving stack shipped in version 5.  | Luke Edwards (@ledwards2225)   | N/A              | Draft    | Core       | 2026-05-13 |
 
 ## Abstract
 
@@ -124,7 +124,7 @@ A canonical set of IVC inputs covering the v5 circuit set is pinned at AZIP acce
 
 ## Reference Implementation
 
-The reference implementation lives in `AztecProtocol/aztec-packages`. Each optimization landed via the following PR(s): O1 #22652, O2 #23076, O3 #22775, O4 #21246 / #21376 / #21263, O5 #22320.
+The reference implementation lives in `AztecProtocol/aztec-packages`. Each optimization landed via the following PR(s): O1 AztecProtocol/aztec-packages#22652, O2 AztecProtocol/aztec-packages#23076, O3 AztecProtocol/aztec-packages#22775, O4 AztecProtocol/aztec-packages#21246 / AztecProtocol/aztec-packages#21376 / AztecProtocol/aztec-packages#21263, O5 AztecProtocol/aztec-packages#22320.
 
 ## Security Considerations
 
