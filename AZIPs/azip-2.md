@@ -4,7 +4,7 @@
 
 | `azip` | `title`                                              | `description`                                                                                             | `author`    | `discussions-to`                                          | `status` | `category` | `created`  |
 | ------ | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ----------- | --------------------------------------------------------- | -------- | ---------- | ---------- |
-| 2      | Rollup Hardening Against Governance Misconfiguration | Bakes timelocks, rate limits, and immutability into the rollup so governance cannot mute the escape hatch | @just-mitch | https://github.com/AztecProtocol/governance/discussions/2 | Draft    | Core       | 2026-03-31 |
+| 2      | Rollup Hardening Against Governance Misconfiguration | Bakes timelocks, rate limits, and immutability into the rollup so governance cannot mute the escape hatch | @just-mitch | https://github.com/AztecProtocol/governance/discussions/2 | Accepted    | Core       | 2026-03-31 |
 
 ## Abstract
 
