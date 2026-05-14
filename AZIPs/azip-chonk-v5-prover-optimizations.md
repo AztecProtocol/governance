@@ -124,7 +124,7 @@ A canonical set of IVC inputs covering the v5 circuit set is pinned at AZIP acce
 
 ## Reference Implementation
 
-The reference implementation lives in `AztecProtocol/aztec-packages`. Each optimization landed via the following PR(s): O1 AztecProtocol/aztec-packages#22652, O2 AztecProtocol/aztec-packages#23076, O3 AztecProtocol/aztec-packages#22775, O4 AztecProtocol/aztec-packages#21246 / AztecProtocol/aztec-packages#21376 / AztecProtocol/aztec-packages#21263, O5 AztecProtocol/aztec-packages#22320.
+The reference implementation lives in `AztecProtocol/aztec-packages`. Each optimization landed via the following PR(s): O1 [22652](https://github.com/AztecProtocol/aztec-packages/pull/22652), O2 [23076](https://github.com/AztecProtocol/aztec-packages/pull/23076), O3 [22775](https://github.com/AztecProtocol/aztec-packages/pull/22775), O4 [21246](https://github.com/AztecProtocol/aztec-packages/pull/21246) / [21376](https://github.com/AztecProtocol/aztec-packages/pull/21376) / [21263](https://github.com/AztecProtocol/aztec-packages/pull/21263), O5 [22320](https://github.com/AztecProtocol/aztec-packages/pull/22320).
 
 ## Security Considerations
 
