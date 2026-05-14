@@ -4,7 +4,7 @@
 
 | `azip` | `title` | `description` | `author` | `discussions-to` | `status` | `category` | `created` |
 |-----|-|-|-|-|-|-|-|
-| 8 | Public Key hash to mitigate Harvest-Now-X-Later risks | Contract instances contain public key hash instead of public key points | Ilyas Ridhuan (@IlyasRidhuan), Mike Connor (@iAmMichaelConnor), Ciara Nightingale (@ciaranightingale) | - | Draft | Core | 2026-04-27 |
+| 8 | Public Key hash to mitigate Harvest-Now-X-Later risks | Contract instances contain public key hash instead of public key points | Ilyas Ridhuan (@IlyasRidhuan), Mike Connor (@iAmMichaelConnor), Ciara Nightingale (@ciaranightingale) | - | Accepted | Core | 2026-04-27 |
 
 
 ## Abstract
