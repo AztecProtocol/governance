@@ -36,7 +36,8 @@ Anyone can propose changes to the Aztec Network by submitting an AZIP. To get st
 
 1. Post your idea in [GitHub Discussions](https://github.com/AztecProtocol/governance/discussions) (under the "AZIP Ideas" category) to gather initial feedback
 2. Use the [AZIP Template](AZIPs/template.md) to draft your proposal
-3. Open a pull request to this repository. An editor will assign a number and review begins
-4. Once peer review is complete, the PR is merged and the AZIP enters the repository
+3. Before requesting an editor review, run the `azip-editor-review` skill (in `.claude/skills/azip-editor-review/`) against your PR to catch the formatting, completeness, and process issues an editor would flag. See the [AZIP Process](azip-process.md#self-check-before-editor-review) for details.
+4. Open a pull request to this repository. An editor will assign a number and review begins
+5. Once peer review is complete, the PR is merged and the AZIP enters the repository
 
 See the [AZIP Process](azip-process.md) for the full lifecycle and requirements.
