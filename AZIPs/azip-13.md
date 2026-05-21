@@ -4,7 +4,7 @@
 
 | `azip` | `title`                       | `description`                                                                                          | `author`                       | `discussions-to` | `status` | `category` | `created`  |
 | ------ | ----------------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------ | ---------------- | -------- | ---------- | ---------- |
-| 13 | Chonk v5 Prover Optimizations | A catalog of circuit-level optimizations to the Chonk client-side proving stack shipped in version 5.  | Luke Edwards (@ledwards2225)   | N/A              | Draft    | Core       | 2026-05-13 |
+| 13 | Chonk v5 Prover Optimizations | A catalog of circuit-level optimizations to the Chonk client-side proving stack shipped in version 5.  | Luke Edwards (@ledwards2225)   | N/A              | Accepted    | Core       | 2026-05-13 |
 
 ## Abstract
 
