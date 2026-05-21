@@ -4,7 +4,7 @@
 
 | `azip` | `title`                      | `description`                                                                                                                 | `author`                                                                                                     | `discussions-to` | `status` | `category` | `created`  |
 | ------ | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | ---------------- | -------- | ---------- | ---------- |
-|        | Reduce Protocol Contract Set | Remove AuthRegistry, MultiCallEntrypoint, and PublicChecks from the protocol contracts and down-shift the remaining addresses | David Banks (@dbanks12), Grego (@Thunkar), Nico (@nventuro), Mike (@iAmMichaelConnor), Ilyas (@IlyasRidhuan) | N/A              | Draft    | Core       | 2026-05-13 |
+|        | Reduce Protocol Contract Set | Remove AuthRegistry, MultiCallEntrypoint, and PublicChecks from the protocol contracts and down-shift the remaining addresses | David Banks (@dbanks12), Grego (@Thunkar), Nico (@nventuro), Mike (@iAmMichaelConnor), Ilyas (@IlyasRidhuan) | N/A              | Accepted    | Core       | 2026-05-13 |
 
 ## Abstract
 
