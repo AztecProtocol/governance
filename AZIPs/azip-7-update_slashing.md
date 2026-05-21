@@ -4,7 +4,7 @@
 
 | `azip` | `title`               | `description`                                                                                                       | `author`                                                  | `discussions-to`                                          | `status` | `category` | `created`  |
 | ------ | --------------------- | ------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | --------------------------------------------------------- | -------- | ---------- | ---------- |
-| 7      | Update Slashing Rules | Adds new slashing offenses for checkpoint-related proposer and attestor misbehavior, and revises existing offenses. | Santiago Palladino (@spalladino, santiago@aztec-labs.com) | https://github.com/AztecProtocol/governance/discussions/9 | Draft    | Core       | 2026-04-21 |
+| 7      | Update Slashing Rules | Adds new slashing offenses for checkpoint-related proposer and attestor misbehavior, and revises existing offenses. | Santiago Palladino (@spalladino, santiago@aztec-labs.com) | https://github.com/AztecProtocol/governance/discussions/9 | Accepted    | Core       | 2026-04-21 |
 
 ## Abstract
 
