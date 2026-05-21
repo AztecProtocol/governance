@@ -1,4 +1,4 @@
-# Reduce Protocol Contract Set
+# AZIP-12: Reduce Protocol Contract Set
 
 ## Preamble
 
