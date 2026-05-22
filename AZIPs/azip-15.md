@@ -309,7 +309,7 @@ Truncating the contract address (by the one character required to reach the boun
 
 Alternatively, we considered compressing the block-number and the truncated TX hash of the deploying TX. This way, lookup could happen by checking known EVM chains at the given block number and looking for the TX whose first bits matched the truncated TX hash. However, this already involves more than one node query, in contrast with the one required via the use of a registry.
 
-#### Address representations
+### Address representations
 
 Including a checksum dependent on chain ID makes direct substitution of the chain ID invalid.
 
