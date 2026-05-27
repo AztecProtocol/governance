@@ -4,7 +4,7 @@
 
 | `azip` | `title` | `description` | `author` | `discussions-to` | `status` | `category` | `created` |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 15 | Aztec Namespace | Define a Chain Agnostic Namespace for Aztec | Paperclip Minimizer (@paperclip-minim) | - | Draft | Standard | 2026-05-22 |
+| 15 | Aztec Namespace | Define a Chain Agnostic Namespace for Aztec | Paperclip Minimizer (@paperclip-minim) | https://github.com/AztecProtocol/governance/discussions/38 | Draft | Standard | 2026-05-22 |
 
 ## Abstract
 
