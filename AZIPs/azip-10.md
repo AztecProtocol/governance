@@ -20,7 +20,7 @@ Introduces two additional public keys to bake into an Aztec address:
 ## Impacted Stakeholders
 
 ### App Developers
-Noir contract authors who consume `get_public_keys(account)` will see two extra fields on the returned `PublicKeys` struct (`mspk_m_hash` and `fbpk_m_hash`). This breaking oracle change can therefore only be shipped as part of a new Aztec rollup version so as not to break existing private functions on the current rollup version. Before deploying apps on the new version, smart contract devs should recompile their contracts using the latest Aztec tooling.
+This is a breaking change for two reasons: primarily, address derivation changes (`public_keys_hash` is now computed over six keys rather than four, so every account's address changes); and secondarily, the `get_public_keys_and_partial_address` oracle call now returns 8 fields instead of 6. The AZIP must therefore ship as part of a new Aztec rollup version, so as not to break existing addresses and private functions on the current rollup version. Before deploying apps on the new version, smart contract devs should recompile their contracts using the latest Aztec tooling.
 
 ### Wallets
 Wallet authors MUST produce values for `mspk_m_hash` and `fbpk_m_hash` when constructing a new account, because both participate in address derivation. This AZIP does not enshrine a canonical derivation of the master secret keys `mssk_m` / `fbsk_m` from a wallet's seed, so wallets MAY either (a) stamp the canonical default hashes defined in this specification, or (b) implement their own derivation. Wallets that adopt (b) MUST use a deterministic derivation so the same seed reproduces the same address.
@@ -195,8 +195,6 @@ Because `mspk` and `fbpk` are expected to be used in EC operations (signature ve
 
 - Any app circuit (or stdlib helper) that recovers a `mspk_m` or `fbpk_m` point from its hash MUST validate the recovered point is on the curve and not infinity before performing any EC operation on it.
 
-The PXE SHOULD itself ensure persisted `mspk_m_hash` / `fbpk_m_hash` were derived from on-curve, non-infinity points, but this is a soft check (a malicious PXE cannot be prevented at the protocol layer from registering corrupt hashes).
-
 ### Out of Scope
 
 This AZIP does NOT enshrine any canonical derivation of the master secret keys `mssk_m` / `fbsk_m`; a wallet may choose.
@@ -221,7 +219,11 @@ The final column ("who sees the master public key") relates to harvest-now-decry
 
 #### Suggested usage
 
-The master message-signing pk MUST NOT be passed into any app circuit code. This somewhat mitigates against harvest-now attacks, but not completely because a counterparty might still need access to the master message-signing pk in order to execute a tx which verifies a signature. It's not ideal, but the requirement that the master pk MUST NOT be passed into app circuit code implies that the master message-signing _secret_ key MUST NOT be used directly to sign messages; instead an app-siloed message-signing secret key MUST be used. A hash of the master message-signing pk is exposed to app circuits as per [AZIP-8](./azip-8.md). An app-siloed message-signing pk can be verified against the committed `mspk_m_hash` via a Key Validation Request.
+The master message-signing pk MUST NOT be passed into any app circuit code. This implies that the master message-signing _secret_ key MUST NOT be used directly to sign any messages; instead an app-siloed message-signing secret key MUST be used.
+
+An app-siloed message-signing pk can be verified to relate to an address via a Key Validation Request. A hash of the master message-signing pk MAY be exposed to app circuits for this purpose, as per [AZIP-8](./azip-8.md).
+
+This approach somewhat mitigates against "harvest-now" attacks, but not completely. A counterparty whose app circuit verifies an app-siloed-mspk-signed message must still see the master mspk, because the subsequent kernel circuit that they execute will demand the master mspk as part of processing the key validation request. So the master mspk does leak, but only to the specific counterparties a user provides signatures to, and not to any app contract nor any other observer of the user's address.
 
 #### Alternatives Considered
 
@@ -239,6 +241,7 @@ An authwit call could in theory be used for verifying signatures over arbitrary 
     - This is a somewhat weak argument by itself, since it's not much extra data.
 - Proving Efficiency: It's more efficient for an app to inline-verify a standardised grumpkin schnorr signature than to make an authwit call to a recipient's account contract, which would require an extra kernel iteration.
     - This is a somewhat weak argument: authwits should be embraced, wherever possible, for consistency across apps, wallets, and users.
+- Counterparty integration burden: an authwit call might require the verifier's execution environment to be familiar with the specifics of the signer's account contract -- custom capsules and other simulation-time setup that the account contract author has chosen to rely on. (Preferably, this would not be the case, and authwit standards should seek to standardise any capsules or simulation setup). A signature verified against an enshrined `mspk_m` is a self-contained primitive that any environment can verify without knowing anything about the signer's account-contract internals. Signature verification is also a relatively lightweight action compared with running an authwit.
 
 ##### Inlined Authwit verification
 
