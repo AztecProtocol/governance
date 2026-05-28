@@ -4,7 +4,7 @@
 
 | `azip` | `title`                                | `description`                                                                                                          | `author`                                                  | `discussions-to` | `status` | `category` | `created`  |
 | ------ | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | ---------------- | -------- | ---------- | ---------- |
-| 14     | Multiple Roots per Epoch in the Outbox | Lets the Outbox store multiple L2-to-L1 message roots per epoch so partial proofs do not invalidate pending user exits | Santiago Palladino (@spalladino, santiago@aztec-labs.com) | -                | Draft    | Core       | 2026-05-20 |
+| 14     | Multiple Roots per Epoch in the Outbox | Lets the Outbox store multiple L2-to-L1 message roots per epoch so partial proofs do not invalidate pending user exits | Santiago Palladino (@spalladino, santiago@aztec-labs.com) | -                | Accepted    | Core       | 2026-05-20 |
 
 ## Abstract
 
