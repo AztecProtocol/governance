@@ -16,9 +16,9 @@ Every stakeholder that receives user input (bridges, wallets, dApps) as well as 
 
 ## Motivation
 
-Cross-chain messaging *requires* a definition of chain ID for every involved chain. E.g., an intents-based bridge requires representing the chain for the input assets, as well as each output's recipient, which may be any address at any supported chain.
+This is a first step towards making Aztec rollups available for ERC-7683 (a cross-chain intents standard), as well as the open-intents framework. Cross-chain messaging *requires* a definition of chain ID for every involved chain. E.g., an intents-based bridge requires representing the chain for the input assets, as well as each output's recipient, which may be any address at any supported chain.
 
-Separately, Aztec's address derivation is deterministic in the contract's constructor arguments, its function bytecode and verification keys, and the account's public keys. This scheme is not guaranteed to hold constant across different Aztec versions, which means the same address that a user controls in one rollup version may not be controllable by the user in a different version. Inadvertently sending funds to an address for a newer rollup version may result in loss of funds.
+Separately, this allows for a definition of addresses that are bound to a specific rollup, so that they brick if they're used for an incompatible Aztec rollup version. Aztec's address derivation is deterministic in the contract's constructor arguments, its function bytecode and verification keys, and the account's public keys. This scheme is not guaranteed to hold constant across different Aztec versions, which means the same address that a user controls in one rollup version may not be controllable by the user in a different version. Inadvertently sending funds to an address for a newer rollup version may result in loss of funds.
 
 ## Specification
 
@@ -26,9 +26,9 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 
 The chain-agnostic namespace `aztec` SHALL be reserved for the Aztec ecosystem. And the following ChainAgnostic profiles SHALL be pushed into Chain Agnostic's namespaces repo.
 
-- [CAIP-2](../assets/azip-x/caip-2.md): defines a blockchain ID
-- [CAIP-10](../assets/azip-x/caip-10.md): defines a text representation for account addresses
-- [CAIP-350](../assets/azip-x/caip-350.md): specifies text and binary representations of the chain ID and account address, plus a 2-byte chain type identifier.
+- [CAIP-2](../assets/azip-15/caip-2.md): defines a blockchain ID
+- [CAIP-10](../assets/azip-15/caip-10.md): defines a text representation for account addresses
+- [CAIP-350](../assets/azip-15/caip-350.md): specifies text and binary representations of the chain ID and account address, plus a 2-byte chain type identifier.
 
 A brief description of those is included in the subsections below.
 
@@ -38,29 +38,27 @@ This profile specifies a unique chain ID for every chain, restricted to match th
 
 An Aztec chain's ID is defined as a hash of the settlement chain's ID and the rollup contract address. Optionally, a chain may also have a Governance-attributed human-readable name.
 
-Both of these leverage a Governance-owned registry, as described in the [chain registry](#chain-registry) section. An Aztec's CAIP-2 chain ID can be queried by calling the registry's `getTextChainId` method.
+The alias is stored in a Governance-owned registry, as described in the [chain registry](#chain-registry) section; the hash form is computable offline from `(evmChainId, rollupContractAddress)`, but the same registry exposes it canonically and provides reverse lookup. An Aztec chain's CAIP-2 chain ID can be queried by calling the registry's `getTextChainId` method.
 
 Clients SHOULD resolve a chain's CAIP-2 chain ID by querying a node of that chain via a dedicated JSON-RPC method (e.g., `aztec_getChainId`). Nodes derive the chain ID by reading the alias from the on-chain registry if one is set, or otherwise computing the hash form locally from the known `evmChainId` and `rollupContractAddress`.
 
 #### Human-readable form
 
-For every existing chain, governance MAY choose to bind a human-readable name once and irreversibly, by calling the registry's `setAlias` method. Said form will be restricted to strings matching the regex `[_a-z]{1,31}`.
+For every existing chain, governance MAY choose to bind a human-readable name once and irreversibly, by calling the registry's `setAlias` method. Said form will be restricted to strings matching the regex `[_a-z]{1,31}`. As an opt-out, the alias MAY instead be set to the chain's deterministic text chain ID, which locks the chain as non-aliasable.
 
 #### Hash of the chain's details
 
-When a human-readable name has not been set, the chain ID is the base58btc encoding of `keccak256(abi.encodePacked(evmChainId, rollupContractAddress))[:23]`, left-padded with `'1'` characters (base58btc's zero) to exactly 32 characters. Where, going forwards in the document:
+Define `binary_chain_hash = keccak256(abi.encodePacked(evmChainId, rollupContractAddress))[:23]`, where
 - `evmChainId` is a `uint256` holding the settlement chain's EVM chain ID.
 - `rollupContractAddress` is the `address` of the rollup contract on the settlement chain.
+
+Then, the chain ID's CAIP-2 representation is the base58btc encoding of `binary_chain_hash`, left-padded with `'1'` characters (base58btc's zero) to exactly 32 characters.
 
 ### CAIP-10
 
 This profile specifies a text representation for Aztec addresses, restricted to match the regex `[-.%a-zA-Z0-9]{1,128}`. We'll define it as the 0-padded 64-character hexadecimal representation of the `AztecAddress`, with the mixed-case Aztec-chain-dependent checksum inspired by EIP-55 as described:
 
-Define
-- `binary_chain_hash = keccak256(abi.encodePacked(evmChainId, rollupContractAddress))`
-- `aztec_address` the lower-case 0-padded 64-character hexadecimal representation of the `AztecAddress`.
-
-Then, the checksummed CAIP-10 Aztec address is constructed by, for each `i` in `0..64`, upper-casing the `i`-th character of `aztec_address` if and only if the `i`-th bit of `binary_chain_hash` is `1`. Numeric characters are left unchanged.
+Define `non_checksummed_aztec_address` as the lower-case 0-padded 64-character hexadecimal representation of the `AztecAddress`'s inner `Field` element. Then, the checksummed CAIP-10 Aztec address is constructed by, for each `i` in `0..64`, upper-casing the `i`-th character of `non_checksummed_aztec_address` if and only if the `i`-th bit of `binary_chain_hash` is `1`. Numeric characters are left unchanged.
 
 Consumers of this standard MUST validate the checksum.
 
@@ -85,11 +83,13 @@ This AZIP proposes `0xa27c`, which reads almost like "Aztec".
 
 #### Customary and text representation
 
-Both matching CAIP-2 and CAIP-10
+Both chain ID and address representations match CAIP-2 and CAIP-10.
 
 #### Binary representation
 
-For the chain ID, this is `abi.encodePacked(evmChainId, rollupContractAddress)`.
+Chain ID MUST be `binary_chain_hash` defined in the [CAIP-2 section](#caip-2).
+
+When consumed by protocols that expect a fixed-width 32-byte chain ID (e.g., current OIF code), `binary_chain_hash` MUST be left-padded with `0x00` to 32 bytes. Its `uint256` form is the standard EVM big-endian interpretation of those 32 bytes (equivalently, of `binary_chain_hash` left-padded with zeros).
 
 For the address, this is just the Ethereum `uint256` for the field number in the `AztecAddress`.
 
@@ -103,7 +103,7 @@ It MUST implement the following methods:
 function getTextChainId(uint256 evmChainId, address rollupContractAddress) external view returns (string memory);
 ```
 
-Returns the text representation of the chain ID for the Aztec chain represented by the arguments. It MUST return the human-readable form if available, and the hash form otherwise. Clients that need the binary form decode the result as base58btc (stripping leading `'1'` padding) when the length is 32, or look it up via `getChainDetails` otherwise.
+Returns the text representation of the chain ID for the Aztec chain represented by the arguments. It MUST return the human-readable form if available, and the hash form otherwise. Clients that need the binary form decode the result as base58btc (stripping leading `'1'` padding) when the length is 32; otherwise (i.e., when an alias was returned) they MUST resolve the underlying `(evmChainId, rollupContractAddress)` via `getChainDetails` and then either call `getBinaryChainId` or recompute the hash locally.
 
 ```solidity
 function setAlias(uint256 evmChainId, address rollupContractAddress, string calldata alias) external onlyOwner;
@@ -148,10 +148,10 @@ MUST ensure the chain details haven't been stored before.
 MUST emit a `ChainDetailsStored` event.
 
 ```solidity
-function getBinaryChainId(uint256 evmChainId, address rollupContractAddress) external pure returns (bytes memory);
+function getBinaryChainId(uint256 evmChainId, address rollupContractAddress) external pure returns (bytes23);
 ```
 
-Returns the binary representation of the chain ID, `abi.encodePacked(evmChainId, rollupContractAddress)`. Although callers can compute this locally, the registry exposes it as a normative reference so that consumers do not produce divergent encodings.
+Returns the binary representation of the chain ID, `binary_chain_hash` as defined in the [CAIP-2 section](#caip-2). Although callers can compute this locally, the registry exposes it as a normative reference so that consumers do not produce divergent encodings.
 
 It MUST define the following events:
 
@@ -239,7 +239,7 @@ testnet: 9203544e42bA86847Ca8458432F7c0265cE567E74064cb25B2a9723C390463c2
 
 ### Using the Chain Agnostic namespace
 
-Chain Agnostic is the dominant standard for cross-chain identifiers and addresses it directly.
+Chain Agnostic is the dominant standard for cross-chain identifiers and addresses.
 
 CAIP-2 and CAIP-10 are ubiquitous. Out of the 42 namespaces registered as of 2026-05-22, CAIP-2 is present in 41 of them, and CAIP-10 in 26.
 
@@ -261,9 +261,15 @@ We decided to keep the chain ID constant under such changes on the grounds that 
 
 ### Chain ID's binary representation
 
-The existing CAIP-350 profiles' binary and text chain IDs are each just a representation of the other, and hence the conversion can be done offline. We could've defined the binary representation of the chain ID as the binary encoding of the text representation as well.
+We could've alternatively defined the binary representation of the chain ID as `abi.encodePacked(uint256, address)` (`bytes`, 52 bytes long). An advantage of this is that the EIP-7930 interoperable address would contain all of the routing information required.
 
-The chosen representation incurs the cost of an Ethereum mainnet call in order to look for the binary form from the text form, but in exchange encodes useful information in the binary representation. E.g., a token bridge going from mainnet to any other mainnet-based Aztec chain can extract the chain ID to assert it's the proper one, and the rollup contract address in order to send the messages, *without the need to look this info up* in the registry at any point. The registry's lookup is only for off-chain services that receive user input.
+However, while OIF-maintained ERC-7683 currently depends on EIP-7930 (and thus was compatible with said definition), the currentl OIF code, as well as related bridges, use `(chain, address)` pairs where the length of both `chain` and `address` is 32 bytes (and disregard the binary key altogether).
+
+We've re-defined the binary chain ID so that it fits in those protocols as well. A positive (but less relevant) consequence is that gas costs are smaller.
+
+The binary representation is limited to 23 bytes so that conversion back and forth between binary and text representation is trivial, and can be done offline.
+ 
+As a downside, the binary chain ID doesn't contain useful information (settlement chain ID and rollup contract address). However, the on-chain registry provides lookup data from binary chain ID to the pre-image.
 
 ### Chain ID's text representation
 
@@ -355,23 +361,23 @@ Reference Aztec address: `0x9203544e42ba86847ca8458432f7c0265ce567e74064cb25b2a9
 
 ### CAIP-350 binary chain ID
 
-`abi.encodePacked(evmChainId, rollupContractAddress)` (52 bytes):
+`keccak256(abi.encodePacked(evmChainId, rollupContractAddress))[:23]` (23 bytes):
 
 | chain | binary (hex) |
 | --- | --- |
-| Alpha | `0x0000000000000000000000000000000000000000000000000000000000000001ae2001f7e21d5ecabf6234e9fdd1e76f50f74962` |
-| Testnet | `0x0000000000000000000000000000000000000000000000000000000000aa36a7f6d0d42ace06829becb78c74f49879528fc632c1` |
+| Alpha | `0x408a686a7c669d6a207f1b41924bedfb3f8c71b03bfc70` |
+| Testnet | `0x0a5adfb53f708dedbb3450948d0160b216747667f08b63` |
 
 ### CAIP-10 mixed-case checksum
 
-Computed against `binary_chain_hash = keccak256(abi.encodePacked(evmChainId, rollupContractAddress))`:
+Computed against `binary_chain_hash` (see the [CAIP-2 section](#caip-2)):
 
 | chain | checksummed address |
 | --- | --- |
 | Alpha | `9203544e42ba86847CA8458432F7C0265CE567e74064cB25B2a9723C390463C2` |
 | Testnet | `9203544e42bA86847Ca8458432F7c0265cE567E74064cb25B2a9723C390463c2` |
 
-A reference implementation generating these vectors is in [`../assets/azip-x/checksum.py`](../assets/azip-x/checksum.py).
+A reference implementation generating these vectors is in [`../assets/azip-15/checksum.py`](../assets/azip-15/checksum.py).
 
 ## Security Considerations
 
