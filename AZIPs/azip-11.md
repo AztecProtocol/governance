@@ -108,11 +108,11 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 
 ### Constants
 
-**`DOM_SEP__AUTH_INNER: u32 = poseidon2_hash_bytes("az_dom_sep__authwit_inner".as_bytes())`**: domain separator for computing the inner hash of a message
+**`DOM_SEP__AUTH_INNER: u32 = poseidon2_hash_bytes("az_dom_sep__auth_inner".as_bytes())`**: domain separator for computing the inner hash of a message
 
-**`DOM_SEP__AUTH_MESSAGE: u32 = poseidon2_hash_bytes("az_dom_sep__authwit_outer".as_bytes())`**: domain separator for computing the message hash
+**`DOM_SEP__AUTH_MESSAGE: u32 = poseidon2_hash_bytes("az_dom_sep__auth_outer".as_bytes())`**: domain separator for computing the message hash
 
-**`DOM_SEP__AUTH_NULLIFIER: u32 = poseidon2_hash_bytes("az_dom_sep__authwit_outer".as_bytes())`**: domain separator for computing an authorization’s nullifier
+**`DOM_SEP__AUTH_NULLIFIER: u32 = poseidon2_hash_bytes("az_dom_sep__auth_outer".as_bytes())`**: domain separator for computing an authorization’s nullifier
 
 **`CANONICAL_AUTH_REGISTRY_ADDRESS: Field = 0x1`**: deployment address of the canonical authorization registry
 
