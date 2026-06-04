@@ -4,7 +4,7 @@
 
 | `azip` | `title`                   | `description`                                                                             | `author`                                 | `discussions-to` | `status` | `category` | `created`  |
 | ------ | ------------------------- | ----------------------------------------------------------------------------------------- | ---------------------------------------- | ---------------- | -------- | ---------- | ---------- |
-| 17     | Optimized Rollup Verifier | Switch the L1 root-rollup verifier to the hand-rolled inline-assembly UltraHonk verifier. | Mitchell Tracy (mitchell@aztec-labs.com) | -                | Draft    | Core       | 2026-05-28 |
+| 17     | Optimized Rollup Verifier | Switch the L1 root-rollup verifier to the hand-rolled inline-assembly UltraHonk verifier. | Mitchell Tracy (mitchell@aztec-labs.com) | -                | Draft    | Accepted       | 2026-05-28 |
 
 ## Abstract
 
