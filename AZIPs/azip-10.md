@@ -4,7 +4,7 @@
 
 | `azip` | `title` | `description` | `author` | `discussions-to` | `status` | `category` | `created` | `requires` |
 |-----|-|-|-|-|-|-|-|-|
-| 10 | New message-signing and fallback public keys | Adds dedicated message-signing and fallback master public keys to the Aztec address preimage | Ilyas Ridhuan (@IlyasRidhuan), Mike Connor @iAmMichaelConnor, Nico Venturo @nventuro, Ciara Nightingale @ciaranightingale | https://github.com/AztecProtocol/governance/pull/22 | Draft | Core | 2026-04-29 | AZIP-8 |
+| 10 | New message-signing and fallback public keys | Adds dedicated message-signing and fallback master public keys to the Aztec address preimage | Ilyas Ridhuan (@IlyasRidhuan), Mike Connor @iAmMichaelConnor, Nico Venturo @nventuro, Ciara Nightingale @ciaranightingale | https://github.com/AztecProtocol/governance/pull/22 | Accepted | Core | 2026-04-29 | AZIP-8 |
 
 
 ## Abstract
