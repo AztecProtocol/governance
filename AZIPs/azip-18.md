@@ -4,7 +4,7 @@
 
 |azip|title|description|author|discussions-to|status|category|created|requires|
 |-|-|-|-|-|-|-|-|-|
-|18|Fungible Token|An interface for fungible tokens|TBD|TBD|Draft|Standard|2026-06-11|AZIP-11|
+|18|Fungible Token|An interface for fungible tokens|TBD|https://github.com/AztecProtocol/governance/discussions/47|Draft|Standard|2026-06-11|AZIP-11|
 
 ## Abstract
 
