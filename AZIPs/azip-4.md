@@ -16,7 +16,7 @@ An L1 contract — the **block-hash portal** — reads `blockhash(block.number -
 
 The store consumes the inbox message exactly once, verifies that the canonical RLP-encoded L1 block header (supplied as a witness) keccak-hashes to the inbox-committed hash, and memoizes a Poseidon2 commitment of the verified RLP header into public state keyed by L1 block number. Applications then **read** the header commitment — never re-consuming the message — verify their RLP-header witness against it with a cheap Poseidon2 check (~1–2k gates in place of a ~25k-gate keccak), and run Merkle-Patricia-trie, receipt, or beacon-state proofs against the extracted roots, exactly as the in-protocol design does.
 
-The store is a "standard contract" with a deterministic address (the same derivation recipe as today's `AuthRegistry` / `PublicChecks`: canonical salt, zero deployer, no-arg constructor), exposed to apps via an aztec-nr constant and published once by a permissionless L2 transaction — **not** a magic-slot protocol contract. The design therefore introduces no kernel, protocol-circuit, or AVM changes, no recompile of deployed application circuits, and no change to the L1 `GenesisState`; a new standard contract can be added to a running rollup without a new Rollup version. The only consensus-layer change is the new slashing offense; nodes adopt it via a grace window (detection enabled, voting disarmed) before the AZUP-scheduled activation epoch arms slashing — see Backwards Compatibility. The trade-offs are higher L1 gas per checkpoint, higher AVM gas in `submit()` (one keccak + one Poseidon2 over the ~550-byte RLP header, amortized once per L1 block across all readers), and an L1→L2 readability latency bounded below by the inbox lag (~144 s expected, plus ~72 s of additional latency per consecutive missed push).
+The store is a "standard contract" with a deterministic per-network address (the same derivation recipe as today's `AuthRegistry` / `PublicChecks` — canonical salt, zero deployer — plus one initializer argument: the network's portal address), re-derivable by anyone from the compiled class and the portal address already carried in the rollup's L1 contract address set, and published once by a permissionless L2 transaction — **not** a magic-slot protocol contract. The design therefore introduces no kernel, protocol-circuit, or AVM changes, no recompile of deployed application circuits, and no change to the L1 `GenesisState`; a new standard contract can be added to a running rollup without a new Rollup version. The only consensus-layer change is the new slashing offense; nodes adopt it via a grace window (detection enabled, voting disarmed) before the AZUP-scheduled activation epoch arms slashing — see Backwards Compatibility. The trade-offs are higher L1 gas per checkpoint, higher AVM gas in `submit()` (one keccak + one Poseidon2 over the ~550-byte RLP header, amortized once per L1 block across all readers), and an L1→L2 readability latency bounded below by the inbox lag (~144 s expected, plus ~72 s of additional latency per consecutive missed push).
 
 The inbox message commits *only* the L1 block number and the L1 block hash. Pre-committing additional curated header fields (e.g. `prev_randao`, `timestamp`) and switching the committed value to the beacon block root (via [EIP-4788](https://eips.ethereum.org/EIPS/eip-4788)) were both considered and rejected; see Alternatives Considered.
 
@@ -24,7 +24,7 @@ The inbox message commits *only* the L1 block number and the L1 block hash. Pre-
 
 **Sequencers / proposers.** Proposing a checkpoint gains one new duty: include `BlockHashPortal.pushLatest()` before `propose()` in the same L1 transaction. Omission or out-of-order placement is slashable. The added L1 gas is ~10k gas in-protocol plus ~20–50k gas for the portal call per checkpoint, depending on whether the inbox tree was already touched between checkpoints. The call takes no arguments, and proposers are not responsible for consuming the message on L2.
 
-**Application developers.** A new, opt-in capability to read and prove L1 state. Existing applications need not recompile unless they choose to use the new standard-address constant. Per-read header verification adds a Poseidon2 check against the memoized header commitment.
+**Application developers.** A new, opt-in capability to read and prove L1 state. Existing applications need not recompile unless they choose to adopt the new capability; readers receive the store's per-network address as configuration (re-derivable from the compiled class plus the network's portal address). Per-read header verification adds a Poseidon2 check against the memoized header commitment.
 
 **Oracle providers, token / messaging bridges, lending markets, restaking protocols.** The same use cases the in-protocol design enumerates, served via the stored block hash: prove balances and prices against `state_root`, prove deposits and events against `receipts_root`, prove validator data against the beacon root. These are proof-backed (marginal-overhead) reads. The L1→L2 inbox remains available and authoritative for deposit notifications; this adds an independent verification path.
 
@@ -34,7 +34,7 @@ The inbox message commits *only* the L1 block number and the L1 block hash. Pre-
 
 **Keepers.** Permissionless L2 actors call `submit()` after the L1→L2 message lands, supplying the referenced L1 block's RLP header and paying the one-time keccak/Poseidon2 cost. Funding a keeper improves freshness; otherwise the first app needing the block can call `submit()` itself.
 
-**Infrastructure (RPCs, indexers, block explorers).** Two new contracts to track: the L1 portal (deployed per-network and registered in the rollup's L1 contract address set alongside `Rollup` / `Inbox`) and the L2 standard store (per-network address derived via the standard-contract recipe). There are no serialization changes to core headers or `GlobalVariables`.
+**Infrastructure (RPCs, indexers, block explorers).** Two new contracts to track: the L1 portal (deployed per-network and registered in the rollup's L1 contract address set alongside `Rollup` / `Inbox`) and the L2 standard store (per-network address derived from the compiled class plus the network's portal address). There are no serialization changes to core headers or `GlobalVariables`.
 
 ## Motivation
 
@@ -55,7 +55,7 @@ The tradeoff is that freshness is enforced by slashing rather than by an atomic 
 | Block-hash portal (or "portal") | An L1 contract — deployed per-network alongside `Rollup` / `Inbox` and registered in the same `L1ContractAddresses` set — that reads `blockhash` and sends the L1→L2 message. |
 | Block-hash store (or "store") | The L2 standard contract that consumes the message and memoizes a Poseidon2 header commitment into public state. |
 | `blockhash(n)` | EVM opcode. Returns `keccak256(rlp(header_n))` for L1 block `n`; available only for the last 256 L1 blocks. |
-| Standard contract | An L2 contract at a deterministic address derived from its compiled class plus the canonical standard-contract salt (`1`) and the zero deployer, exposed to apps via a generated aztec-nr constant. Published to L2 by a permissionless `publishContractClass` + `publishInstance` transaction — **not** committed in the L1 `GenesisState`, and **not** a magic-slot protocol contract the kernel reasons about. |
+| Standard contract | An L2 contract at a deterministic address derived from its compiled class, the canonical standard-contract salt (`1`), the zero deployer, and its initializer arguments (which enter the derivation via the initialization hash). Published to L2 by a permissionless `publishContractClass` + `publishInstance` transaction — **not** committed in the L1 `GenesisState`, and **not** a magic-slot protocol contract the kernel reasons about. |
 
 ### (a) Contracts
 
@@ -63,14 +63,14 @@ The tradeoff is that freshness is enforced by slashing rather than by an atomic 
 
 1. Reads `n = block.number - 1` and `h = blockhash(n)`.
 2. Computes the content commitment (see (b)).
-3. Calls `inbox.sendL2Message(recipient = BlockHashStore, content, secretHash = 0)`.
+3. Calls `inbox.sendL2Message(recipient = BlockHashStore, content, secretHash = compute_secret_hash(0))`. The message carries no secret, so the portal commits the secret-hash of the zero secret (see (b)); `submit()` consumes it with `secret = 0`.
 4. Emits `BlockHashPushed(uint256 indexed n)`. This event is the canonical signal of duty satisfaction: the slashing offense in (d) is decided by its presence and position in the proposer's L1 transaction receipt. The event intentionally omits `h`; `submit()` is authenticated by the inbox commitment, not by event data, and reconstructs `content = sha256ToField(n ‖ h)` before consuming the message.
 
 `inbox.sendL2Message` reverts only on immutable-portal misconfiguration or out-of-gas. Both revert `propose()` rather than silently omitting the push, so (d) can be decided from the receipt of any landed checkpoint transaction.
 
 The portal is intentionally thin: it carries no RLP decoder, no header parsing, and no L1-side application logic beyond the three steps above. Keeping it minimal preserves the design's audit-surface advantage and its Ethereum-hard-fork-format independence (see Security Considerations).
 
-**`BlockHashStore` (L2).** A new **standard contract** — a normal contract whose address is deterministically derived from its compiled class plus the canonical salt (`1`) and the zero deployer (the same recipe used by today's `AuthRegistry` / `PublicChecks`), exposed to applications via a generated `STANDARD_BLOCK_HASH_STORE_ADDRESS` constant in the aztec-nr standard-addresses module. The contract instance itself is materialized on L2 by a one-time permissionless `publishContractClass` + `publishInstance` transaction; the L1 `GenesisState` is unchanged. It MUST NOT be a magic-slot protocol contract; see Rationale. It exposes:
+**`BlockHashStore` (L2).** A new **standard contract** — a normal contract whose address is deterministically derived from its compiled class plus the canonical salt (`1`), the zero deployer (the same recipe used by today's `AuthRegistry` / `PublicChecks`), and one initializer argument: the network's portal address (see "Portal-pair binding" below). The compiled class — the audited artifact — is identical on every network; only the instance address varies per network, and anyone can re-derive it from the class plus the portal address in the network's L1 contract address set. The contract instance itself is materialized on L2 by a one-time permissionless `publishContractClass` + `publishInstance` transaction; the L1 `GenesisState` is unchanged. It MUST NOT be a magic-slot protocol contract; see Rationale. It exposes:
 
 ```
 // PUBLIC function.
@@ -95,13 +95,13 @@ get_latest() -> (l1BlockNumber, header_commitment):
 
 `submit()` MUST verify `keccak256(rlp_header) == l1BlockHash` before writing `header_commitments[l1BlockNumber]`. The keccak is paid once per L1 block by the submitter (a keeper or first caller) in AVM gas; every subsequent reader skips it, verifying the cheap Poseidon2 commitment instead (see "Application-side verification" below). If the assertion fails, the entire `submit()` call reverts — including the inbox consume — leaving the message available for re-submission with the correct `rlp_header`.
 
-`submit()` SHOULD emit a `BlockHashMemoized(l1BlockNumber)` public log on the success path (i.e. when memoization actually occurs), mirroring the L1 portal's `BlockHashPushed(n)` event so off-chain indexers, explorers, and keepers can detect "block `n` is now memoized" without polling public state. The log MUST NOT fire on the idempotent early-return branch, so the presence of a log carries the meaning "this call performed the memoization." The log's shape is non-normative; consumers MUST NOT couple to its field encoding. The authoritative signal that block `n` is memoized is `blockhashes[n] != 0` — the log is an off-chain notification convenience, not a substitute for the storage read.
+`submit()` SHOULD emit a `BlockHashMemoized(l1BlockNumber)` public log on the success path (i.e. when memoization actually occurs), mirroring the L1 portal's `BlockHashPushed(n)` event so off-chain indexers, explorers, and keepers can detect "block `n` is now memoized" without polling public state. The log MUST NOT fire on the idempotent early-return branch, so the presence of a log carries the meaning "this call performed the memoization." The log's shape is non-normative; consumers MUST NOT couple to its field encoding. The authoritative signal that block `n` is memoized is `header_commitments[n] != 0` — the log is an off-chain notification convenience, not a substitute for the storage read.
 
-**Portal-pair binding.** The portal pins the store as `recipient`, and the store pins the portal as the expected `sender` in `consume_l1_to_l2_message`. Externally pinning either address propagates the binding.
+**Portal-pair binding.** The portal pins the store as `recipient` (a constructor immutable), and the store pins the portal as the expected `sender` in `consume_l1_to_l2_message`. The store receives the portal address as its single **initializer argument**, which is what enters the L2 address derivation (via the initialization hash — Aztec's `immutables_hash` input does not carry contract values today, so the binding cannot ride on it); the same argument is also persisted in public storage for runtime reads. The mutual reference resolves at deployment time without a fixed point because an L1 CREATE address depends only on the deployer account and nonce, not on constructor arguments: the portal's L1 address is precomputed first, the store's address is derived from it, and the portal is then deployed with the store address as its immutable.
 
 **Memoization is mandatory.** Because `consume_l1_to_l2_message` emits a nullifier, a given message is consumable exactly once. If each reader tried to consume it directly, only the first would succeed. The store therefore consumes **once**, writes the value to public state, and every subsequent reader **reads** (never consumes).
 
-**Address recognition and activation.** The portal address is an entry in the rollup's L1 contract address set (the same configuration surface that already carries `rollupAddress`, `inboxAddress`, etc., per `L1ContractAddresses`); nodes recognize it from that configuration, not from a hardcoded constant, and it differs from network to network. The store address is deterministically derived from its compiled class plus the canonical standard-contract salt and zero deployer (the same recipe used by `AuthRegistry` / `PublicChecks`); because the class pins the network's portal address as the expected inbox sender, the class hash — and therefore the derived store address — is also per-network. The store's one-time `publishContractClass` + `publishInstance` transaction carries no special authority because clients re-derive the address from the network's compiled class.
+**Address recognition and activation.** The portal address is an entry in the rollup's L1 contract address set (the same configuration surface that already carries `rollupAddress`, `inboxAddress`, etc., per `L1ContractAddresses`); nodes recognize it from that configuration, not from a hardcoded constant, and it differs from network to network. The store address is deterministically derived from its compiled class plus the canonical standard-contract salt, the zero deployer, and the network's portal address as its initializer argument (initializer arguments enter Aztec address derivation through the initialization hash). The class hash is network-independent — one audited artifact serves every network — while the derived instance address is per-network. Because the only per-network input is the portal address, the store introduces no new configuration surface: clients re-derive its address from the compiled class plus the `L1ContractAddresses` entry the portal already requires, and node software SHOULD expose the derived address (e.g. via node info) for applications and tooling. The store's one-time `publishContractClass` + `publishInstance` transaction carries no special authority because clients re-derive the address rather than trusting the publisher. Re-derivation is also what defends consumers against a substituted address: a reader — including a **private** reader, which cannot read live public state and takes the store address as a witness — recomputes the expected address from the audited class hash plus the portal entry in `L1ContractAddresses` and rejects any address that does not match, so a malicious or misconfigured store address is detectable rather than silently trusted.
 
 ### (b) Content / message encoding
 
@@ -119,7 +119,7 @@ The following MUST be pinned bit-for-bit so Solidity and Noir agree:
 - **Witnesses.** `l1BlockHash` and `rlp_header` are supplied to `submit()`. The store recomputes `content`, verifies `keccak256(rlp_header) == l1BlockHash`, and stores `poseidon2(pack_to_fields(rlp_header))`.
 - **Number binding.** `l1BlockNumber` MUST be in the preimage; otherwise a caller could store a real hash under the wrong block number.
 - **Canonical serialization.** Field order, concatenation, endianness, and reduction MUST be identical in Solidity and Noir.
-- **`secretHash`.** MUST be `0`.
+- **`secretHash`.** The message carries no secret. The portal MUST set `secretHash = compute_secret_hash(0)` — the Poseidon2 secret-hash of the zero secret, using the network's canonical `DOM_SEP__SECRET_HASH` domain separator — and `submit()` MUST consume with `secret = 0`. The derivation MUST be identical in Solidity and Noir.
 
 **Reader-side binding.** The inbox authenticates `content` with `sha256ToField`. `submit()` resolves that binding once by recomputing the content and verifying `keccak256(rlp_header) == l1BlockHash`; after memoization, readers verify only `poseidon2(pack_to_fields(rlp_header)) == header_commitments[n]`.
 
@@ -150,7 +150,7 @@ A new offense is added to the existing node-enforced slashing framework (`Slashe
 | Parameter | Value |
 | --- | --- |
 | Referenced L1 block | `block.number - 1` |
-| `secretHash` | `0` |
+| `secretHash` | `compute_secret_hash(0)` (consumed with `secret = 0`; never a raw `0` — see (b)) |
 | Slash amount | `10e18` wei. Matches `SLASH_DATA_WITHHOLDING_PENALTY`, `SLASH_INACTIVITY_PENALTY`, and every other small-severity offense in `yarn-project/slasher/src/generated/slasher-defaults.ts`. Falls in the SMALL bucket — `AZTEC_SLASH_AMOUNT_SMALL` floor is `10e18` per `l1-contracts/generated/default.json`. |
 | Detection tolerance | None. The offense is decided purely by inspection of the proposer's finalized L1 transaction (see (d) Detection); there is no late-arrival tolerance window analogous to `SLASH_DATA_WITHHOLDING_TOLERANCE_SLOTS = 3`. |
 
@@ -203,7 +203,7 @@ Putting `blockhash` + `sendL2Message` inside `propose()` would give a hard, atom
 
 ### Why a standard contract, not a magic-slot protocol contract
 
-The store is used by applications, not by the kernel. A magic-slot protocol contract would require kernel constants and protocol-circuit changes; a standard contract gives applications a deterministic, source-derivable address (re-derived per-network from the network's compiled class) without adding kernel surface. Portal-pair authentication works in either tier because both sides bind by derived address.
+The store is used by applications, not by the kernel. A magic-slot protocol contract would require kernel constants and protocol-circuit changes; a standard contract gives applications a deterministic, source-derivable address (re-derived per-network from the compiled class plus the network's portal address) without adding kernel surface. Portal-pair authentication works in either tier because both sides bind by derived address.
 
 ### Why a commitment and a bound block number
 
@@ -250,6 +250,24 @@ A future AZIP MAY introduce a sliding-window pruning policy (e.g. retain only bl
 **Raw block hash as content.** Rejected because a raw 256-bit `blockhash` often exceeds `MAX_FIELD_VALUE`, and because the block number still needs to be bound into the inbox content.
 
 **Proposer-consume duty.** Folding the L2 `submit()` consume into the slashable proposer obligation. Rejected; see Specification (f) for the reasoning.
+
+#### Compile-time portal pinning (per-network class hash)
+
+Considered: baking the network's portal address into the store's compiled source as a generated global, keeping a no-arg constructor exactly as in the `AuthRegistry` recipe.
+
+Rejected because the baked-in address makes the compiled class — and with it the audited artifact, the class publication, and the contract build pipeline — per-network, while still failing to produce a cross-network address constant (the portal address differs per network, so the derived store address does too, either way). Instance-level pinning through the initializer argument confines the per-network variation to the instance address, keeps a single network-independent class, and the address remains re-derivable from configuration the proposal already requires.
+
+#### Inbox sender rewrite (fee-asset-portal-style magic sender)
+
+Considered: having the Inbox rewrite the portal's `sender` to a network-independent magic value at message insertion, as it does today for the fee-asset portal (where the L2 contract validates against `FEE_JUICE_ADDRESS` rather than the portal's real L1 address). This would let the store hardcode a universal sender, giving it a fully network-independent class *and* address.
+
+Rejected because every ingredient of that pattern is a protocol privilege outside this proposal's scope: a fiat-assigned magic address baked into protocol constants, the Inbox deploying the portal in its own constructor, and a special-case branch in `sendL2Message`. The Inbox on live networks is already deployed and immutable, so adopting this pattern means a new message-bridge deployment — exactly the kind of core-contract change this proposal exists to avoid. A future AZIP MAY migrate the binding to this pattern if a new Rollup version redeploys the message bridge.
+
+#### One-time post-deploy portal setter
+
+Considered: publishing the store with no binding and setting the portal address once via an unauthenticated one-shot setter, decoupling the two deployments entirely.
+
+Rejected because there is no party to authenticate the setter against — standard contracts are published by the zero deployer — so the call is front-runnable: an adversary could bind the store to a hostile portal before the legitimate setter lands, gaining the ability to memoize fabricated headers.
 
 #### Beacon-root-only content (`parent_beacon_block_root` via EIP-4788)
 
@@ -307,7 +325,7 @@ Three pieces require coordinated rollout:
 
 - **Portal.** The portal contract is deployed once per network alongside `Rollup` / `Inbox` and its address is added to the rollup's L1 contract address set (`L1ContractAddresses`). Nodes consuming the slashing rule and infrastructure tracking the duty MUST read the portal address from configuration; there is no cross-network constant.
 - **Slashing.** The new offense is consensus-relevant. To tolerate staggered node upgrades, it SHOULD activate after a grace window during which detection may run but slash votes are disabled, letting nodes converge before any honest proposer can be penalized. The window length and activation epoch are AZUP-scope.
-- **Store.** Clients MUST derive the same `STANDARD_BLOCK_HASH_STORE_ADDRESS` from the network's compiled class (which pins the network's portal address), ship the corresponding aztec-nr constant, and publish the contract instance to L2 via a normal `publishContractClass` + `publishInstance` transaction.
+- **Store.** Clients MUST derive the store address from the compiled class plus the network's portal address (the store's single initializer argument); node software SHOULD expose the derived address (e.g. via node info) so applications and tooling need not re-implement the derivation. The contract instance is published to L2 via a normal permissionless `publishContractClass` + `publishInstance` transaction. There is no cross-network address constant; readers receive the store address as configuration.
 
 ## Test Cases
 
