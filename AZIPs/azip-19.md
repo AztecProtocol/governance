@@ -4,7 +4,7 @@
 
 | `azip` | `title`                | `description`                                                                                           | `author`                                 | `discussions-to` | `status` | `category` | `created`  |
 | ------ | ---------------------- | ------------------------------------------------------------------------------------------------------- | ---------------------------------------- | ---------------- | -------- | ---------- | ---------- |
-| 19     | Committee-Attested Fees | Commit each checkpoint's fee recipient and value in its header so fees are committee-attested, not prover-supplied. | Mitchell Tracy (mitchell@aztec-labs.com) | -                | Draft    | Core       | 2026-06-18 |
+| 19     | Committee-Attested Fees | Commit each checkpoint's fee recipient and value in its header so fees are committee-attested, not prover-supplied. | Mitchell Tracy (mitchell@aztec-labs.com) | -                | Accepted    | Core       | 2026-06-18 |
 
 ## Abstract
 
