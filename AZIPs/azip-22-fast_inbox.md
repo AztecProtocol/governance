@@ -166,11 +166,11 @@ contract Rollup
     assert checkpoint.inHash in inbox.storage
 ```
 
-Circuits run the same checks as in the previous option.
+Circuits run the same checks as in the previous option. However, there is no check that the messages added in each block are chunked as in the `Inbox` buckets. A proposer could split the checkpoint messages across its blocks however it sees fit, not necessarily respecting how they were chunked in the `Inbox`. We can enforce this by adding a "new messages chunk" `marker` to the rolling hash at the start of each chunk. This could be either a magic value, the L1 block, or a timestamp. Note that this check can be dropped from the circuits to simplify the structure of the rolling hash if we consider that committee-only enforcement of correct message chunking is good enough.
 
 ```
 circuit BlockRoot
-  assert sha256(lastBlock.inHash, msgs) == block.inHash
+  assert sha256(lastBlock.inHash, ...[marker, msgs]) == block.inHash
   assert merkleInsert(lastBlock.stateref.l1ToL2, msgs) == block.stateref.l1ToL2.root
 
 circuit CheckpointRoot
@@ -178,7 +178,7 @@ circuit CheckpointRoot
   assert blocks[-1].stateref == checkpoint.stateref
 ```
 
-This option is cheaper in terms of L1 gas, roughly same as it is today, since it requires only one `SLOAD` from the `Inbox` per checkpoint. It does **not** guarantee that the messages added in each block map to slots in the `Inbox`. A proposer could split the checkpoint messages across its blocks however it sees fit, though all messages until the last one consumed must be included and in order for the rolling hash to match. Nevertheless, the committee could restrict that messages are bundled and consumed based on how they were inserted in the `Inbox`.
+This option is cheaper in terms of L1 gas, roughly same as it is today, since it requires only one `SLOAD` from the `Inbox` per checkpoint.
 
 #### Option 3: Validate only checkpoint `inHash` on both L1 and circuits
 
@@ -195,14 +195,14 @@ Circuits only check that the _checkpoint's_ `inHash` is the commitment of all L1
 ```
 circuit BlockRoot
   assert merkleInsert(lastBlock.stateref.l1ToL2, msgs) == block.stateref.l1ToL2.root
-  block.inHashSponge = lastBlock.inHashSponge.absorb(msgs);
+  block.inHashSponge = lastBlock.inHashSponge.absorb(...[marker, msgs]);
 
 
 circuit CheckpointRoot
-  assert sha256(lastCheckpoint.inHash, blocks.msgs) == checkpoint.inHash
+  assert sha256(lastCheckpoint.inHash, ...[marker, msgs]) == checkpoint.inHash
   assert blocks[-1].inHash == checkpoint.inHash
   assert blocks[-1].stateref == checkpoint.stateref
-  assert blocks[-1].inHashSponge == lastCheckpoint.inHashSponge.absorb(blocks.msgs)
+  assert blocks[-1].inHashSponge == lastCheckpoint.inHashSponge.absorb(...[marker, msgs])
 
 ```
 
