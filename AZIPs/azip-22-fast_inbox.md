@@ -102,7 +102,7 @@ We recommend against this optimization, at least in a first iteration: it remove
 
 As mentioned, today checkpoint headers have the `inHash` of the sealed L1-to-L2 subtree they consume from the Inbox. These messages are all appended simultaneously before the first block.
 
-In this new model, since each block includes new messages, each block requires a commitment to the messages inserted in it. The checkpoint's `inHash` is then the `inHash` of the _last_ block of the checkpoint. The L1-to-L2 world state tree then mutates on each block, not just on the first block of each checkpoint.
+In this new model, since each block includes new messages, each block requires a commitment to the messages inserted in it. The checkpoint's `inHash` is then the `inHash` of the _last_ block of the checkpoint, and the `inHash` is redefined to be the rolling SHA256 from the `Inbox`. The L1-to-L2 world state tree then mutates on each block, not just on the first block of each checkpoint.
 
 When broadcasting a block proposal to the network, the proposer now includes an `inHash` for the block, which informs the nodes that receive the proposal which L1-to-L2 messages they need to pull from the `Inbox` and insert into the block before reexecuting it. The `inHash` chosen by the proposer should be validated by all nodes, and rejected if invalid, or is too old, or includes too many messages.
 
@@ -190,16 +190,20 @@ contract Rollup
     assert checkpoint.inHash in inbox.storage
 ```
 
-Circuits only check that the _checkpoint's_ `inHash` is the commitment of all L1-to-L2 messages added throughout the checkpoint. This means that circuits would not catch the `inHash` in a block header not matching the messages inserted in that block. Nevertheless, since the `inHash` is still checked at the checkpoint, circuits guarantee that the correct list of messages is inserted across blocks.
+Circuits only check that the _checkpoint's_ `inHash` is the commitment of all L1-to-L2 messages added throughout the checkpoint. This means that circuits would not catch the `inHash` in a block header not matching the messages inserted in that block. Nevertheless, since the `inHash` is still checked at the checkpoint, circuits guarantee that the correct list of messages is inserted across blocks. A sponge is used to verify that the list of messages passed into the `CheckpointRoot` circuit is the same as the messages inserted into each of the `BlockRoot` circuits.
 
 ```
 circuit BlockRoot
   assert merkleInsert(lastBlock.stateref.l1ToL2, msgs) == block.stateref.l1ToL2.root
+  block.inHashSponge = lastBlock.inHashSponge.absorb(msgs);
+
 
 circuit CheckpointRoot
   assert sha256(lastCheckpoint.inHash, blocks.msgs) == checkpoint.inHash
   assert blocks[-1].inHash == checkpoint.inHash
   assert blocks[-1].stateref == checkpoint.stateref
+  assert blocks[-1].inHashSponge == lastCheckpoint.inHashSponge.absorb(blocks.msgs)
+
 ```
 
 This option is simpler in terms of changes to circuits, since the parity circuit today predicates over the L1-to-L2 messages of the entire checkpoint, not of each block. However, it means that it's possible to prove the validity of a checkpoint that contains blocks whose headers' `inHash` values do not correspond to the messages they include. A workaround to this could be to just _remove_ the `inHash` from block headers, and only use them in block proposals to signal the messages to be included. Again, the correctness of `inHash`es would still be enforced by the committee and the L2 network itself.
