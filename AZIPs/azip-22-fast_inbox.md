@@ -56,7 +56,7 @@ The end result should be that a message is included in a new L2 block that start
 
 The Inbox must now account for checkpoints that will consume messages up until near the end of their corresponding build frame. This means that message trees should not be closed based on when a checkpoint lands.
 
-We propose that the Inbox now commits to the messages it has received exclusively via a rolling hash, which gets snapshotted into buckets _per L1 block_, along with the total number of messages, in a circular storage structure. This gives checkpoints the flexibility to define up to which L1 block they have consumed messages when they are posted to L1. Note that this rolling hash is not necessarily the truncated 128-bit one the Inbox keeps today for node syncing: as a consensus-critical commitment, it should likely use the full 256 bits.
+We propose that the Inbox now commits to the messages it has received exclusively via a rolling hash, which gets snapshotted into buckets _per L1 block_, along with the total number of messages and the L1 timestamp, in a circular storage structure. This gives checkpoints the flexibility to define up to which L1 block they have consumed messages when they are posted to L1. Note that this rolling hash is not the truncated 128-bit keccak the Inbox keeps today for node syncing: each link of the chain is a SHA256 truncated to a field element, the same primitive and truncation policy used at every node of today's `inHash` frontier tree, so L1 and circuits compute the identical value.
 
 The `Rollup.propose` call receives the checkpoint header, which includes the checkpoint's `inHash`, now redefined to be the last rolling hash of Inbox messages that were bundled into the checkpoint. The Rollup contract then checks that the proposed `inHash` matches a valid rolling hash from the Inbox.
 
@@ -125,7 +125,7 @@ Today circuits only allow an empty block to be the first block in the checkpoint
 
 Today blocks inherit the same timestamp as their checkpoint, which is the beginning of their target slot. We could let blocks have any timestamp within the slot, as long as the committee accepts it, and use that to reference an Inbox bucket. Note that this would require storing timestamps in the Inbox as well, and possibly additional checks in circuits. Whether this is a net benefit depends on what checks are enforced by L1 and circuits, which are detailed in the section below.
 
-We suggest keeping timestamps as they are today and referencing Inbox buckets by L1 block number instead: per-block timestamps bring extra Inbox storage and circuit checks, and nothing in this proposal depends on them.
+We suggest keeping timestamps as they are today: per-block L2 timestamps bring extra circuit checks, and nothing in this proposal depends on them. Inbox buckets do record the L1 timestamp at which they were created (packed at no extra storage cost alongside the message count), so that the `INBOX_LAG_SECONDS` and censorship-cutoff checks — both defined in seconds — compare timestamps directly, avoiding the drift between block numbers and time introduced by missed L1 slots.
 
 ### Verification and circuits
 
