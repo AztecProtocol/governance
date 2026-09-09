@@ -8,249 +8,265 @@
 
 ## Abstract
 
-Today, all L1-to-L2 messages for a checkpoint are added at its start, yielding a message latency of between 24 and 108 seconds. This AZIP streams L1-to-L2 messages into L2 blocks as they are received by the Inbox, rather than waiting for an Inbox tree to be sealed in order to inject all its messages simultaneously at the beginning of the next checkpoint. The Inbox is redesigned to commit to received messages via a rolling hash snapshotted per L1 block, checkpoints reference the last message bucket they consume, and an `INBOX_LAG_SECONDS` lag guards against shallow L1 reorgs. The result reduces message latency to between 12 and 30 seconds.
+This proposal streams L1-to-L2 messages into blocks as soon as nodes observe them on L1, removing the two-checkpoint
+Inbox lag. A rolling hash commits to the ordered message sequence. Blocks may consume arbitrary prefixes of that
+sequence, while checkpoints must end at an L1 Inbox bucket boundary. Nodes check that boundary when receiving a
+checkpoint proposal, and the Rollup enforces consumption limits and censorship protection at publication.
 
 ## Impacted Stakeholders
 
-This proposal affects **sequencers and proposers**, who now insert L1-to-L2 messages into each block as they build it and choose which Inbox buckets a checkpoint consumes; **validators**, who validate the message bundle carried by each block proposal and enforce the censorship and lag rules before attesting; and **users and applications sending L1-to-L2 messages**, who benefit from reduced message latency and are subject to the per-block and per-checkpoint message caps.
+Users and applications gain earlier access to inbound messages. Sequencers select messages throughout checkpoint
+building; nodes, including validators, authenticate those messages and the final checkpoint boundary. Provers verify
+compact per-block insertion. Portal sends are subject to backpressure when the Inbox ring fills.
 
 ## Motivation
 
-### How L1-to-L2 messages work today
+The existing Inbox seals message trees when checkpoints land on L1 and introduces a two-checkpoint delay before those
+messages enter L2 world state. All messages for a checkpoint are inserted before its first block, so later blocks cannot
+use newly arrived messages.
 
-L1-to-L2 messages are pushed via the Inbox contract on L1. Whenever a message is sent, it's accumulated into a tree. This tree is then `consume`d by a checkpoint `propose`d in the Rollup contract, and a new tree is opened.
-
-After pipelined block building was implemented, a 2-checkpoint lag was introduced on the Inbox. This guarantees that the messages to be consumed by a checkpoint are frozen by the time the build frame of that checkpoint starts. To illustrate:
-
-| Time  | Slot | Event                                                                                                   |
-| ----- | ---- | ------------------------------------------------------------------------------------------------------- |
-| -12s  | N-1  | Build frame for slot N+1 starts with checkpoint C+1.                                                    |
-| ~36s  | N    | Checkpoint C for slot N is mined on L1. Inbox seals tree T+2 for checkpoint C+2 and opens tree T+3.     |
-| 60s   | N    | Build frame for slot N+2 starts with checkpoint C+2 with messages from tree T+2.                        |
-| ~108s | N+1  | Checkpoint C+1 for slot N+1 is mined on L1. Inbox seals tree T+3 for checkpoint C+3 and opens tree T+4. |
-| 132s  | N+1  | Build frame for slot N+3 starts with checkpoint C+3 with messages from tree T+3.                        |
-| 138s  | N+1  | First block from checkpoint C+3 adds all messages to world state and gets broadcasted by its proposer.  |
-| 144s  | N+1  | That first block is validated and added by nodes in the network.                                        |
-
-Tree T+3 is opened when checkpoint C landed on L1, and sealed when checkpoint C+1 landed. It is fed into checkpoint C+3. This means that messages sent between the ~36s and ~108s mark are injected in a block at the 132s mark, so it's available on the proposed chain between the 132-144s mark.
-
-All in all, the latency between an L1-to-L2 message being mined on L1 and it being added to L2 world state is anywhere between **24s and 108s**.[^latency]
-
-Note that all L1-to-L2 messages for a checkpoint are added at its start, before processing the first transaction of the first block in the checkpoint. Also note that, for a tx to make use of the message, it needs to reference a world state tree root that contains it, so consumers need to wait for that first block to be emitted.
-
-### How are messages verified today
-
-Checkpoints carry a world-state tree root and an `inHash` in their header. The `inHash` is a SHA256 commitment to the messages added at the beginning of the checkpoint, structured as a frontier tree, as assembled by the `Inbox` contract. When the checkpoint is mined on L1, its `inHash` is checked against the one on the `Inbox` (considering the lag). This verifies that the messages declared by the checkpoint correspond to the ones on the `Inbox`.
-
-The other half of the work is checking that the messages inserted into world-state correspond to the `inHash` commitment. Here, a set of circuits verify that the messages correspond to both the SHA256 frontier tree commitment (the `inHash`) and a merkle poseidon subtree root. These circuits are dubbed the `parity` circuits, since they check the parity between both commitments. The subtree root is then inserted into the L1-to-L2 messages tree of world-state by the first block of the checkpoint.
+Decoupling message insertion from checkpoint boundaries removes this fixed wait. Availability on the proposed chain
+then depends on L1 synchronization, block building and propagation, subject to backlog and capacity. There is no minimum
+message age or confirmation-depth requirement, and no fixed latency guarantee.
 
 ## Specification
 
-Rather than waiting for an Inbox tree to be sealed in order to inject all its messages simultaneously at the beginning of the next checkpoint to be built, we stream L1-to-L2 messages into the checkpoint as they are received by the Inbox. In other words, after the Inbox receives a message, that message is inserted into the next block being built by the current proposer, regardless of whether that block is the first on the checkpoint or not.
+### Inbox commitment and buckets
 
-This couples the proposed chain more tightly to L1, so an L1 reorg could invalidate the last L2 blocks built which depended on the messages included. We propose adding a lag of `INBOX_LAG_SECONDS=12s` to guard against shallow reorgs, enforced by L2 nodes when validating block proposals rather than by L1. Alternatively, we could drop this lag, further reducing latency, at the cost of either building machinery to roll back the last few proposed blocks and re-build them, or aborting the entire slot.
-
-The end result should be that a message is included in a new L2 block that starts being built 12-18s after it is mined on L1. Given the block becomes available no more than 12s later to users, the total latency now drops to between **12s and 30s**[^latency], down from the current 24-108s.
-
-### Inbox redesign
-
-The Inbox must now account for checkpoints that will consume messages up until near the end of their corresponding build frame. This means that message trees should not be closed based on when a checkpoint lands.
-
-We propose that the Inbox now commits to the messages it has received exclusively via a rolling hash, which gets snapshotted into buckets _per L1 block_, along with the total number of messages and the L1 timestamp, in a circular storage structure. This gives checkpoints the flexibility to define up to which L1 block they have consumed messages when they are posted to L1. Note that this rolling hash is not the truncated 128-bit keccak the Inbox keeps today for node syncing: each link of the chain is a SHA256 truncated to a field element, the same primitive and truncation policy used at every node of today's `inHash` frontier tree, so L1 and circuits compute the identical value.
-
-The `Rollup.propose` call receives the checkpoint header, which includes the checkpoint's `inHash`, now redefined to be the last rolling hash of Inbox messages that were bundled into the checkpoint. The Rollup contract then checks that the proposed `inHash` matches a valid rolling hash from the Inbox.
-
-This gives builders the flexibility to decide which messages are actually included in the checkpoint, giving them optionality on the `INBOX_LAG_SECONDS` to use.
-
-#### Messages cap and overflowing
-
-Circuits enforce a maximum number of messages to be inserted per checkpoint. Assuming we move that restriction to blocks, we can define a `MAX_L1_TO_L2_MSGS_PER_BLOCK=256`. The Inbox cannot accept more than that number of messages per L1 block, or that bucket would become impossible to consume by a checkpoint. A simple solution is to just revert on overflow, and have clients wait until the next L1 block to send a message.
-
-A more user-friendly solution instead is to roll over the excess of messages onto the next bucket. `Inbox` would require a pointer to the current bucket for accumulating inbound messages, and choose the current bucket based on the max of that pointer and the current L1 block.
-
-Note that circular storage introduces a hazard here: a bucket that has not yet been consumed could be overwritten once the ring wraps around, so an L2 outage longer than the ring covers would permanently destroy in-flight messages. The Inbox must either refuse inserts that would overwrite an unconsumed bucket, halting message sends for the remainder of the outage, or fall back to plain non-circular storage.
-
-We lean towards the rollover solution: reverting on overflow makes message sending griefable, since anyone can cheaply fill a bucket to delay a victim's message, whereas rolling over keeps sends live and only delays consumption.
-
-#### Preventing censorship
-
-Given the proposer and the committee choose which is the last message bucket consumed in the checkpoint, based on the last block they produced on the checkpoint, the Rollup must ensure that the Inbox is emptied regularly. Otherwise, a malicious committee could choose to never consume any messages, censoring L1-to-L2 messages flowing into the Rollup.
-
-We define the cutoff as the latest Inbox bucket at or before the start of the build frame of the proposed checkpoint. Every message in that bucket or an earlier one was visible for the entire build frame, so the committee had every opportunity to include it. Note that this also bounds the _maximum_ lag a proposer can apply to roughly one build frame, while `INBOX_LAG_SECONDS` sets the minimum.
-
-However, the Rollup must not force the checkpoint to consume more than `MAX_L1_TO_L2_MSGS_PER_CHECKPOINT`. Since checkpoints consume whole buckets and each bucket snapshots the cumulative message count, the check becomes: the checkpoint is acceptable if consuming one more bucket would either go past the cutoff or overflow the cap.
+Starting from zero, the Inbox extends a rolling hash for each message leaf:
 
 ```
-contract Rollup
-  def propose(checkpoint)
-    bucket = inbox.storage[checkpoint.inHash]
-    next = bucket.next  # first bucket not consumed by the checkpoint, if any
-    assert next == none  # consumed everything in the Inbox
-        or next.l1Block > cutoff(checkpoint.slot)  # or everything up to the cutoff
-        or next.total > prev.total + MAX_L1_TO_L2_MSGS_PER_CHECKPOINT  # or as much as the cap allows
+hash' = sha256ToField(DOM_SEP__INBOX_ROLLING_HASH ‖ hash ‖ leaf)
 ```
 
-#### Possible optimizations
+The domain separator is the four-byte big-endian value `3737216265`; the hash and leaf are each 32-byte big-endian
+values. `sha256ToField` drops the last byte of the SHA256 digest and prepends a zero byte. Each link therefore hashes
+68 bytes. The chain commits only to message contents and order: no timestamps, bucket separators or block markers
+enter it.
 
-As an optimization, it may be possible to have the Inbox snapshot the messages per L2 slot instead of L1 block, and close the snapshot roughly `INBOX_LAG_SECONDS` before the end of the current build frame. However, it's unclear if this would reap any gas benefits, since the Inbox storage can be implemented as circular storage.
+The Inbox snapshots the chain into buckets containing `{rollingHash, totalMsgCount, timestamp, msgCount}`, packed into
+two storage slots. A new bucket opens on the first message of a new L1 block or when the preceding bucket is full.
+Each bucket holds at most 256 messages; additional messages roll into another bucket, including within the same L1
+block. Bucket zero is an empty genesis sentinel with hash and counts zero.
 
-Note that this would _remove_ the optionality for proposers to choose exactly up to which `Inbox` bucket they consume, and would instead be mandated by the Rollup contract.
+Buckets have dense sequence numbers and occupy a fixed ring at `seq % ringSize`. Reads reject entries outside the live
+window. The production ring has 4096 entries, with a constructor minimum of 512.
+`getBucketAtOrBeforeTotal(upperBound)` returns the live bucket with the greatest cumulative count at or below the bound,
+or fails if none exists.
 
-We recommend against this optimization, at least in a first iteration: it removes proposer optionality, couples the Inbox to L2 slot arithmetic, and the gas savings are unclear.
+Message indices are compact and zero-based: a message's index is the total number of messages preceding it. Blocks
+append their messages at the current tree offset without padding. `sendL2Message` returns the index, and `MessageSent`
+emits the full message including that index.
 
-### Updated checkpoint and block headers
+### Checkpoint publication and censorship protection
 
-As mentioned, today checkpoint headers have the `inHash` of the sealed L1-to-L2 subtree they consume from the Inbox. These messages are all appended simultaneously before the first block.
+The checkpoint header replaces `inHash` with `inboxRollingHash`, the rolling hash after its final consumed message.
+`Rollup.propose` takes an unsigned `bucketHint` identifying the corresponding live bucket. The hint is a lookup aid;
+the header hash is the commitment.
 
-In this new model, since each block includes new messages, each block requires a commitment to the messages inserted in it. The checkpoint's `inHash` is then the `inHash` of the _last_ block of the checkpoint, and the `inHash` is redefined to be the rolling SHA256 from the `Inbox`. The L1-to-L2 world state tree then mutates on each block, not just on the first block of each checkpoint.
+For a checkpoint in slot `S`, define:
 
-When broadcasting a block proposal to the network, the proposer now includes an `inHash` for the block, which informs the nodes that receive the proposal which L1-to-L2 messages they need to pull from the `Inbox` and insert into the block before reexecuting it. The `inHash` chosen by the proposer should be validated by all nodes, and rejected if invalid, or is too old, or includes too many messages.
+```
+buildFrameStart(S) = toTimestamp(S - 1)
+cutoff(S)          = buildFrameStart(S) - ethereumSlotDuration
+```
 
-#### Acceptance conditions for proposed blocks
+The offset uses the configured L1 slot duration, normally 12 seconds. It defines mandatory consumption, not a minimum
+age for consuming a message.
 
-A node that receives a block proposal carrying an `inHash` performs the following checks on it:
+Against the effective parent checkpoint after any automatic prune, the Rollup requires:
 
-1. **The `inHash` exists on the Inbox.** The node looks up the `inHash` in its own view of the Inbox, synced from L1. If unknown, the node waits for its L1 sync to catch up to the L1 head within its proposal validation deadline, and rejects the proposal otherwise.
-2. **The `inHash` moves forward.** The bucket referenced by the proposal must be the same as or newer than the one referenced by the parent block. If it is the same, the block adds no messages.
-3. **The `inHash` is not too new.** The bucket's L1 block must be at least `INBOX_LAG_SECONDS` old at validation time, so that a shallow L1 reorg cannot invalidate the block. This makes `INBOX_LAG_SECONDS` the minimum lag enforced by the network, complementing the maximum enforced by the censorship cutoff. This check could be dropped in favor of allowing proposers to unilaterally remove this lag at the risk of L1 reorgs invalidating their checkpoint.
-4. **The message bundle is within caps.** The node derives the bundle itself as all Inbox messages after the parent block's bucket up to and including the proposed one, in insertion order, so the proposal does not need to carry the messages. The bundle must not exceed `MAX_L1_TO_L2_MSGS_PER_BLOCK`, and the running total for the checkpoint must not exceed `MAX_L1_TO_L2_MSGS_PER_CHECKPOINT`.
+1. The referenced live bucket's rolling hash equals the checkpoint header's `inboxRollingHash`.
+2. The bucket is settled: it is the genesis sentinel, was opened before the executing L1 block's timestamp, or is full.
+3. Its cumulative count is at least the parent's consumed count and at most 1024 messages ahead.
+4. The next bucket either does not exist, opened strictly after the cutoff, or would take consumption beyond the
+   1024-message checkpoint cap.
 
-The node then inserts the bundle into its L1-to-L2 message tree, re-executes the block's txs, and checks the resulting state reference against the proposed block header before attesting. When attesting to the last block of a checkpoint, the node additionally verifies that the checkpoint satisfies the minimum consumption rule defined in the `Inbox` censorship section.
+A bucket opened exactly at the cutoff is mandatory unless the cap escape applies. A checkpoint consuming no messages
+keeps its parent's count and hash and remains subject to the same rules.
 
-#### Empty blocks
+The Rollup records the consumed hash, cumulative count and bucket sequence for each checkpoint. These records follow
+the pending chain through prunes and provide the anchors for proof verification and ring eviction.
 
-Today circuits only allow an empty block to be the first block in the checkpoint. However, this means that a proposer cannot consume new L1-to-L2 messages to make them available to users if the tx pool is empty. We should allow a non-first block without txs in a checkpoint if it contains some L1-to-L2 messages.
+`validateCheckpointHeaderAndInbox` provides the proposer with a shared header-and-Inbox preflight. It checks the
+expected parent against the effective parent in the simulated Rollup context, resolves the expected message total to
+an exact bucket endpoint, applies the same Inbox consumption checks as `propose`, and returns the bucket hint.
+The proposer runs it before gossiping the checkpoint and again before publication, accounting for a pipelined parent
+or a preceding invalidation as applicable. Simulation does not guarantee later transaction acceptance.
 
-#### Revisiting timestamps
+### Block and checkpoint validation
 
-Today blocks inherit the same timestamp as their checkpoint, which is the beginning of their target slot. We could let blocks have any timestamp within the slot, as long as the committee accepts it, and use that to reference an Inbox bucket. Note that this would require storing timestamps in the Inbox as well, and possibly additional checks in circuits. Whether this is a net benefit depends on what checks are enforced by L1 and circuits, which are detailed in the section below.
+Every block proposal carries a signed `InboxMessagePrefixRef` containing its ending rolling hash. The ending count
+comes from the block header's L1-to-L2 tree `nextAvailableLeafIndex`, so the signature binds both count and hash.
+There is no separate Inbox commitment in the block header.
 
-We suggest keeping timestamps as they are today: per-block L2 timestamps bring extra circuit checks, and nothing in this proposal depends on them. Inbox buckets do record the L1 timestamp at which they were created (packed at no extra storage cost alongside the message count), so that the `INBOX_LAG_SECONDS` and censorship-cutoff checks — both defined in seconds — compare timestamps directly, avoiding the drift between block numbers and time introduced by missed L1 slots.
+For each proposed block, nodes require forward-only consumption, at most 256 new messages, and at most 1024 messages
+across its checkpoint. They read the exact range `[parentCount, endCount)` and its endpoint hashes from one consistent
+local message-store snapshot, authenticate the signed prefix, insert the messages, re-execute transactions and check
+the resulting state against the header. Block insertion rechecks the prefix and parent atomically with the store write
+to prevent a concurrent message rewind from admitting stale work.
+
+An intermediate block may end inside an L1 bucket. Nodes impose no message-age check. An unavailable or mismatching
+local prefix prompts bounded synchronization and retry; inability to confirm it is not evidence of proposer misconduct
+and must not trigger slashing or peer penalties. The same applies to a state mismatch caused by the local prefix
+changing during validation.
+
+When a checkpoint proposal arrives, all receiving nodes, including validators, must additionally:
+
+- Authenticate its full consumed message range and require its ending hash to match both the checkpoint header and
+  the last block's signed prefix.
+- Resolve the final cumulative count against the live L1 Inbox and require an exact bucket boundary with the same
+  rolling hash. A matching arbitrary prefix alone is insufficient.
+- Reconstruct the checkpoint from its validated blocks and enforce the block-count cap.
+
+A checkpoint whose endpoint cannot be confirmed is not accepted or attested while that check is unresolved.
+Temporary L1 unavailability or conflicting local views must not be treated as proof of proposer misconduct.
+This boundary check does not replace the proposer's full publication preflight or the Rollup's settlement and
+censorship checks.
+
+### Proposer selection and completion
+
+Ordinary blocks greedily consume locally observed messages up to the per-block and per-checkpoint caps. The proposer
+checks that each range starts at the prefix its preceding blocks consumed; a changed prefix aborts the checkpoint.
+
+To leave room for a valid final boundary, the proposer queries a live endpoint whenever the next greedy block would
+end strictly beyond `checkpointStart + 768`, and on every final block. The threshold reserves one maximum-sized bucket
+within the 1024-message checkpoint cap.
+
+For a non-final block, the lookup is bounded by the local message count and checkpoint cap; the block takes up to
+256 messages toward that endpoint and may still end inside a bucket. It never consumes less than the safe local step
+ending at or below the threshold. If resolution fails, that safe step remains available. Selection is repeated from
+the current view for each block, without retaining or freezing a target.
+
+For the final block, the lookup is also bounded by that block's remaining reach. It must return a content-matching
+endpoint at or beyond the current cursor; otherwise the checkpoint is abandoned. If the normal sub-slot schedule
+ends inside a bucket, the proposer attempts one extra transaction-less completion block under the final build-time
+budget and the same caps. The checkpoint still has to pass the publication preflight. Already signed blocks are not
+rewritten, and a second checkpoint is not signed for the same duty.
+
+Checkpoints contain at most 72 blocks. Fully empty blocks are legal at any position, and message insertion does not
+require transactions. A network's configured maximum blocks per checkpoint must lie between 4 and 72; four blocks
+provide capacity for the 1024-message cap.
+
+Public functions may consume messages inserted by their own block, because insertion precedes transaction execution.
+Private consumption still requires membership against a historical header available to the wallet. Blocks retain
+their checkpoint's timestamp.
+
+### Node storage and reorg recovery
+
+Nodes store the ordered message log with compact indices, leaves, cumulative hashes and L1 synchronization metadata.
+They do not persist the bucket partition. Live boundary checks query L1; published-block replay reads exact count
+ranges from block headers and does not depend on historical bucket boundaries. Missing ranges are errors, never
+silently empty bundles.
+
+Synchronization checks the local count and hash against an observed L1 head. On disagreement, recovery finds a matching
+message prefix and replays canonical events in bounded batches. Replacements are compared by content. Suffix replacement,
+syncpoint updates and pruning of affected proposed blocks are atomic. Recovery does not advertise an agreeing head
+until synchronization reaches it, and speculative work is withheld when the checkpointed tip disagrees with the log.
+Published-chain changes remain the checkpoint synchronizer's responsibility.
+
+Re-mining the same messages with different timestamps or bucket partitions leaves their prefix hashes unchanged and
+does not invalidate intermediate blocks. Changed or removed messages invalidate the proposed chain from the first block
+that consumed them. A completed checkpoint can nevertheless lose its final bucket boundary even when all messages
+survive, making that checkpoint unpublishable.
 
 ### Verification and circuits
 
-In this new model, we now have bundles of L1-to-L2 messages added to each block within the checkpoint. We have different options on how strict we want to be in verifying these.
+One `InboxParity<S>` proof per checkpoint replaces the frontier-tree parity family. The prover selects the smallest
+size in `{64, 256, 1024}` that fits the message count. The circuit requires zero padding beyond the real messages,
+extends a witnessed starting rolling hash over the real leaves, and absorbs those same leaves into an initially empty
+Poseidon2 message sponge. Padding enters neither accumulator.
 
-#### Option 1: Validate every block `inHash` matches an `Inbox` slot
+Each block-root circuit proves the compact message-tree append and absorbs its actual bundle into the checkpoint's
+running message sponge. The checkpoint root equates the complete ending sponge with the parity proof's sponge,
+including its cached state and absorbed count. No bucket or block separators enter either message accumulator.
 
-When a checkpoint is published to L1, we also include the list of `inHash` values for each of its blocks. Each of these is verified against the `Inbox`. This ensures that every message bundle injected into a block corresponds to an existing message bundle in the `Inbox`. If we allow distinct timestamps per block, we could additionally check that those match the ones from the `Inbox` bucket they are consuming, accounting for the lag.
+Checkpoint merges require rolling-hash continuity. L1 anchors the start of a proven range to the preceding checkpoint's
+stored hash; the end is bound through the final checkpoint header. Both ends are necessary to prevent replaying an
+already-consumed suffix. The start is derived from the parent and is not an additional header field.
 
-```
-contract Rollup
-  def propose(checkpoint)
-    for block in checkpoint
-      assert block.inHash in inbox.storage
-```
+The checkpoint root also enforces the block cap and initial message/blob sponge states, connects the starting state
+to the previous archived block header, and enforces timestamp progression across checkpoints. Block merges carry
+state and sponge continuity through the checkpoint. Block-root variants are position-independent.
 
-Circuits then check that the `inHash` of each block follows from accumulating the block's messages on top of the previous block's `inHash`, that those messages are inserted into the L1-to-L2 message tree, and that the checkpoint's `inHash` is the same as the last block's.
+Although the proposer chooses the per-block split, the prover cannot change an attested split: each block header
+commits to its post-insertion message-tree snapshot, the archive commits to those headers, and the proof is checked
+against the attested archive roots stored on L1. Blob data includes the L1-to-L2 message-tree root for every block.
 
-```
-circuit BlockRoot
-  assert sha256(lastBlock.inHash, msgs) == block.inHash
-  assert merkleInsert(lastBlock.stateref.l1ToL2, msgs) == block.stateref.l1ToL2.root
+### Ring backpressure
 
-circuit CheckpointRoot
-  assert blocks[-1].inHash == checkpoint.inHash
-  assert blocks[-1].stateref == checkpoint.stateref
-```
+The Inbox rejects sends that would overwrite an unconsumed bucket. Eviction advances with proven consumption, using
+the checkpoint's recorded bucket sequence when its epoch proof is accepted. Pending checkpoints cannot free space
+that a prune might require again.
 
-This option is particularly expensive in terms of L1 gas, since it requires one `SLOAD` per block in the checkpoint. As for the parity checks, it's unclear whether they would be moved to the BlockRoot circuit, or kept as a separate set of circuits as they are today.
-
-#### Option 2: Validate checkpoint `inHash` on L1 and block `inHash` in circuits
-
-When a checkpoint is published to L1, we verify that its `inHash` matches a recent one from the Inbox, rather than verifying each individual block's.
-
-```
-contract Rollup
-  def propose(checkpoint)
-    assert checkpoint.inHash in inbox.storage
-```
-
-Circuits run the same checks as in the previous option. However, there is no check that the messages added in each block are chunked as in the `Inbox` buckets. A proposer could split the checkpoint messages across its blocks however it sees fit, not necessarily respecting how they were chunked in the `Inbox`. We can enforce this by adding a "new messages chunk" `marker` to the rolling hash at the start of each chunk. This could be either a magic value, the L1 block, or a timestamp. Note that this check can be dropped from the circuits to simplify the structure of the rolling hash if we consider that committee-only enforcement of correct message chunking is good enough.
-
-```
-circuit BlockRoot
-  assert sha256(lastBlock.inHash, ...[marker, msgs]) == block.inHash
-  assert merkleInsert(lastBlock.stateref.l1ToL2, msgs) == block.stateref.l1ToL2.root
-
-circuit CheckpointRoot
-  assert blocks[-1].inHash == checkpoint.inHash
-  assert blocks[-1].stateref == checkpoint.stateref
-```
-
-This option is cheaper in terms of L1 gas, roughly same as it is today, since it requires only one `SLOAD` from the `Inbox` per checkpoint.
-
-#### Option 3: Validate only checkpoint `inHash` on both L1 and circuits
-
-The rollup check is the same as in option 2.
-
-```
-contract Rollup
-  def propose(checkpoint)
-    assert checkpoint.inHash in inbox.storage
-```
-
-Circuits only check that the _checkpoint's_ `inHash` is the commitment of all L1-to-L2 messages added throughout the checkpoint. This means that circuits would not catch the `inHash` in a block header not matching the messages inserted in that block. Nevertheless, since the `inHash` is still checked at the checkpoint, circuits guarantee that the correct list of messages is inserted across blocks. A sponge is used to verify that the list of messages passed into the `CheckpointRoot` circuit is the same as the messages inserted into each of the `BlockRoot` circuits.
-
-```
-circuit BlockRoot
-  assert merkleInsert(lastBlock.stateref.l1ToL2, msgs) == block.stateref.l1ToL2.root
-  block.inHashSponge = lastBlock.inHashSponge.absorb(...[marker, msgs]);
-
-
-circuit CheckpointRoot
-  assert sha256(lastCheckpoint.inHash, ...[marker, msgs]) == checkpoint.inHash
-  assert blocks[-1].inHash == checkpoint.inHash
-  assert blocks[-1].stateref == checkpoint.stateref
-  assert blocks[-1].inHashSponge == lastCheckpoint.inHashSponge.absorb(...[marker, msgs])
-
-```
-
-This option is simpler in terms of changes to circuits, since the parity circuit today predicates over the L1-to-L2 messages of the entire checkpoint, not of each block. However, it means that it's possible to prove the validity of a checkpoint that contains blocks whose headers' `inHash` values do not correspond to the messages they include. A workaround to this could be to just _remove_ the `inHash` from block headers, and only use them in block proposals to signal the messages to be included. Again, the correctness of `inHash`es would still be enforced by the committee and the L2 network itself.
-
-We suggest going with this option, along with removing the `inHash` from block headers. The extra guarantees of options 1 and 2 only protect the integrity of a header field: in all three options, which messages are inserted into world-state, and in what order, is equally constrained. If the field is not part of the header, there is nothing to lie about, and the soundness concern described in the security considerations below evaporates. Nodes still validate each block's message bundle at proposal time, which is where it actually matters.
-
-Note that the rolling-hash predicate must be anchored at both ends. Checkpoint public inputs carry the start and end of the consumed chain segment, consecutive checkpoints assert continuity (each checkpoint's start equals its parent's end), and the Rollup pins the start of each proven range to the rolling hash it recorded for the preceding checkpoint at propose time. With an end-only check the start would be a free witness: a prover could restart the chain from an earlier bucket and re-insert already-consumed messages, since the overlapping suffix still accumulates to the same anchored end hash.
+This prevents silent loss through ring overwrite, but a prolonged proving stall or sustained message spam can halt
+sends through every portal until proven consumption frees space. The ring supplies finite headroom; the censorship
+cap escape does not throttle L1 arrivals. `getRingHeadroom` exposes the available capacity.
 
 ## Rationale
 
-The core design decision is to stream L1-to-L2 messages into blocks as they are received by the Inbox rather than batching them per checkpoint, trading a tighter coupling to L1 for lower message latency. The `INBOX_LAG_SECONDS` lag exists to guard against shallow L1 reorgs invalidating recently built blocks. The rationale for the remaining design decisions — rolling over messages on overflow, the censorship cutoff, keeping timestamps as they are today, and the choice among the three verification options — is discussed inline in the Specification above.
+The rolling hash separates message arrival from checkpoint publication while keeping L1 checks independent of the
+number of L2 blocks. Compact indices and arbitrary block prefixes allow continuous insertion without padding or a
+persisted bucket layout. Bucket endpoints provide bounded L1 snapshots for publication and censorship enforcement.
+
+Immediate consumption accepts reorg exposure in exchange for lower latency. Committing only to message contents and
+order preserves proposed blocks when L1 re-mines unchanged messages. Nodes check the final checkpoint boundary before
+acceptance, while L1 remains authoritative for publication.
 
 ## Backwards Compatibility
 
-This proposal changes the L1 `Inbox` and `Rollup` contracts, the rollup circuits, and the L2 consensus rules, as detailed in the Specification and Appendix. It removes the `AZTEC_INBOX_LAG` constant and introduces `INBOX_LAG_SECONDS`, `MAX_L1_TO_L2_MSGS_PER_BLOCK`, and `MAX_L1_TO_L2_MSGS_PER_CHECKPOINT`.
+This is a coordinated change to L1 contracts, rollup circuits, proposal validation and blob encoding, deployed in a new
+rollup instance. There is no migration of in-flight messages; messages in the old Inbox remain attached to the old
+instance.
+
+The main interface changes are:
+
+- Checkpoint `inHash` becomes `inboxRollingHash`; `propose` gains the unsigned bucket hint, and epoch proofs carry
+  rolling-hash range anchors.
+- Block proposals carry signed message-prefix references. Checkpoint recipients check the final L1 bucket boundary.
+- Message indices become compact; `MessageSent` emits the full message, and `getL1ToL2MessageCheckpoint` is replaced
+  by `getL1ToL2MessageIndex`.
+- Archiver bucket APIs are replaced by count-addressed position/range reads; the message-store schema change requires
+  resynchronization.
+- Blob encoding carries a message-tree root for every block. The two-checkpoint Inbox lag is removed.
 
 ## Security Considerations
 
-### Consuming messages before they are inserted into the `Inbox`
+The rolling hash and parity/message-sponge checks bind the exact ordered message list; the attested block headers bind
+its insertion into individual blocks. Domain separation distinguishes Inbox links from other SHA256 constructions.
+L1's settled-bucket check prevents publication against a mutable same-execution snapshot.
 
-Circuits and L1 no longer enforce that messages are actually present in the `Inbox` before they are inserted into the L2 world-state and can be consumed. Assuming a malicious committee, the proposer for a slot can first add a bundle of messages to an L2 block corresponding to a not-yet-existing `inHash`, then push the messages to the Inbox to produce said `inHash` after-the-fact, and eventually have it confirmed by the checkpoint and circuits. This is possible because L1 only syncs with L2 during checkpoints, so the ordering of events within a checkpoint with respect to L1 can only be enforced by the L2 network itself.
+Circuits do not prove when a message first appeared on L1 relative to a proposed block. Honest nodes enforce presence
+through their own message view and check the checkpoint endpoint on receipt. A non-cooperative committee could build
+with messages inserted on L1 only later, but publication and proof verification still require the final anchored list.
 
-We believe this is not an issue. Nodes in the network validate `proposed` blocks before accepting them, so this behavior should be rejected by the network while the checkpoint is being built. This means that no honest party following the L2 proposed chain would act on these L1-to-L2 messages before they are actually present on L1. And since L2-to-L1 messages are not delivered to the Outbox at least until the checkpoint is mined, there is also no risk of tricking L1 itself by creating a spurious exit from a not-yet-existing inbound message.
+The following limitations remain:
 
-These blocks would eventually be accepted by the network once they are `checkpointed` on L1, but by that time, the malicious committee must have actually inserted the messages into the `Inbox` for the checkpoint's `inHash` to match.
+- A reorg can remove a completed checkpoint's final boundary, costing the checkpoint even if its messages survive.
+- A passing node boundary check or proposer preflight is a check of an observed state. It neither proves future
+  publishability nor replaces L1's full acceptance rules. A later reorg can revert `propose` and spend L1 gas.
+- Recovery retains an inherited finalized-height shortcut. A message re-mined higher with unchanged content can retain
+  its old recorded height and later be trusted as finalized prematurely, without any finalized Ethereum block being
+  reverted. Repairing this shortcut is deferred.
+- Recovery needs an L1 provider that can serve canonical message history back to its anchor, potentially the Inbox
+  deployment block. Provider failures must not be interpreted as absence of messages.
+- Ring exhaustion halts new sends until proving frees space; finite capacity cannot absorb indefinite overload.
 
-### Soundness issues in circuits
+## Constants
 
-Verification options 2 and 3 above mean that a malicious committee can checkpoint blocks that are not valid from the perspective of the rest of the network, but circuits and L1 would still accept them. In most scenarios, the extent of the damage a malicious committee can produce goes as far as the checkpointed chain, since rollup circuits would catch any validity issues. However, in this scenario we have an invalid chain that is provable.
-
-We think this is acceptable, by virtue of relaxing what we consider to be valid on the proposed vs the checkpointed chain. A proposed block is valid if it references a valid `inHash` from the `Inbox` at the time it is received. A checkpointed block is valid if its checkpoint's `inHash` references a valid `inHash`, which is checked by L1, and the checkpoint's L1-to-L2 messages are added throughout its blocks in the correct order.
-
-This means that nodes would reject a proposed chain where messages are not properly pulled from the `Inbox`, but if the total list of messages added in the checkpoint is valid, nodes would accept them, which matches the checks enforced by circuits.
-
-## Appendix
-
-### Constants
-
-| Constant                           | Suggested value   | Scope                         | Notes                                                                                                                                          |
-| ---------------------------------- | ----------------- | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `INBOX_LAG_SECONDS`                | 12s (one L1 slot) | L2 consensus, proposer policy | New. Minimum age of an Inbox bucket for nodes to accept it in a block proposal; proposers may apply a larger lag, up to the censorship cutoff. |
-| `MAX_L1_TO_L2_MSGS_PER_BLOCK`      | 256               | L1, circuits, L2 consensus    | New. Cap on messages per Inbox bucket and per L2 block.                                                                                        |
-| `MAX_L1_TO_L2_MSGS_PER_CHECKPOINT` | 1024              | L1, circuits, L2 consensus    | Today's `NUMBER_OF_L1_L2_MESSAGES_PER_ROLLUP`. Caps messages per checkpoint and bounds the mandatory consumption on propose.                   |
-| `AZTEC_INBOX_LAG`                  | —                 | L1                            | Removed. Today's 2-checkpoint lag on the Inbox, replaced by `INBOX_LAG_SECONDS`.                                                               |
+| Parameter | Value |
+| --- | --- |
+| Messages per block / per Inbox bucket | 256 |
+| Messages per checkpoint | 1024 |
+| Maximum blocks per checkpoint | 72 |
+| Minimum configured blocks per checkpoint | 4 |
+| Production bucket ring / constructor minimum | 4096 / 512 |
+| Endpoint lookup threshold | Checkpoint starting count + 768 |
+| Inbox rolling-hash domain separator | 3737216265 |
+| Parity circuit sizes | 64 / 256 / 1024 |
+| Censorship cutoff offset | Configured `ethereumSlotDuration` |
+| Minimum consumption lag | None |
 
 ## Copyright Waiver
 
 Copyright and related rights waived via [CC0](/LICENSE).
-
-[^latency]: Latency ranges take the best case for the lower bound and the worst case for the upper bound. If blocks are small enough and propagation is fast enough, building and validating a block takes near-zero time, so a message becomes available to the network almost as soon as the block that includes it starts being built. The upper bound instead allows roughly 12s from build start to network-wide availability.
