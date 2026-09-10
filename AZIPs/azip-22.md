@@ -4,7 +4,7 @@
 
 | `azip` | `title`    | `description`                                                                                                                         | `author`                                                  | `discussions-to`                                           | `status` | `category` | `created`  |
 | ------ | ---------- | ------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | ---------------------------------------------------------- | -------- | ---------- | ---------- |
-| 22     | Fast Inbox | Streams L1-to-L2 messages into blocks as they arrive on the Inbox rather than batching them per checkpoint, reducing message latency. | Santiago Palladino (@spalladino, santiago@aztec-labs.com) | https://github.com/AztecProtocol/governance/discussions/53 | Draft    | Core       | 2026-07-01 |
+| 22     | Fast Inbox | Streams L1-to-L2 messages into blocks as they arrive on the Inbox rather than batching them per checkpoint, reducing message latency. | Santiago Palladino (@spalladino, santiago@aztec-labs.com) | https://github.com/AztecProtocol/governance/discussions/53 | Approved    | Core       | 2026-07-01 |
 
 ## Abstract
 
