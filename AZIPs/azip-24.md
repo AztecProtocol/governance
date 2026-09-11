@@ -4,7 +4,7 @@
 
 | `azip` | `title`                                        | `description`                                                                                                       | `author`                                                  | `discussions-to` | `status` | `category` | `created`  |
 | ------ | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | ---------------- | -------- | ---------- | ---------- |
-| 24     | Track First Prover Attribution for Checkpoints | Makes the first prover of every proven checkpoint queryable, enabling applications to reward early message release. | Santiago Palladino (@spalladino, santiago@aztec-labs.com) | N/A              | Draft    | Core       | 2026-09-04 |
+| 24     | Track First Prover Attribution for Checkpoints | Makes the first prover of every proven checkpoint queryable, enabling applications to reward early message release. | Santiago Palladino (@spalladino, santiago@aztec-labs.com) | N/A              | Approved    | Core       | 2026-09-04 |
 
 ## Abstract
 
