@@ -4,7 +4,7 @@
 
 | `azip` | `title` | `description` | `author` | `discussions-to` | `status` | `category` | `created` |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 25 | Activity Score for Full Epoch Proofs | The activity score increases only when a prover proves a complete epoch | Amin Sammara (@aminsammara, amin@aztec-labs.com) | N/A | Draft | Core | 2026-09-02 |
+| 25 | Activity Score for Full Epoch Proofs | The activity score increases only when a prover proves a complete epoch | Amin Sammara (@aminsammara, amin@aztec-labs.com) | N/A | Approved | Core | 2026-09-02 |
 
 ## Abstract
 
