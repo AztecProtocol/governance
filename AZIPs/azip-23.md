@@ -4,7 +4,7 @@
 
 | `azip` | `title`                         | `description`                                                                                                                                        | `author`                                         | `discussions-to` | `status` | `category` | `created`  | `requires` |
 | ------ | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ | ---------------- | -------- | ---------- | ---------- | ---------- |
-| 23     | Introduce a Protocol Fee Margin | Adds a governance-set margin to the mana base fee; the markup above operator cost goes to a governance-set fee recipient, burned by default          | Amin Sammara (@aminsammara, amin@aztec-labs.com) | N/A              | Draft    | Economics  | 2026-07-06 |            |
+| 23     | Introduce a Protocol Fee Margin | Adds a governance-set margin to the mana base fee; the markup above operator cost goes to a governance-set fee recipient, burned by default          | Amin Sammara (@aminsammara, amin@aztec-labs.com) | N/A              | Approved    | Economics  | 2026-07-06 |            |
 
 ## Abstract
 
