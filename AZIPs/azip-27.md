@@ -4,7 +4,7 @@
 
 | `azip` | `title` | `description` | `author` | `discussions-to` | `status` | `category` | `created` |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 27 | Rate-Limited Exits by Staking Providers | Allows staking providers to exit delegators’ validator positions through attester accounts, subject to a shared seven-day limit. | Rumata888 <innokentii@aztec-labs.com> | N/A — local draft | Draft | Core | 2026-09-09 |
+| 27 | Rate-Limited Exits by Staking Providers | Allows staking providers to exit delegators’ validator positions through attester accounts, subject to a shared seven-day limit. | Rumata888 <innokentii@aztec-labs.com> | N/A — local draft | Approved | Core | 2026-09-09 |
 
 ## Abstract
 
