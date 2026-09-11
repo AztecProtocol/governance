@@ -4,7 +4,7 @@
 
 | `azip` | `title` | `description` | `author` | `discussions-to` | `status` | `category` | `created` |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 26 | Transaction Effects Tree in Block Headers | Adds a block-header commitment and membership witnesses binding each transaction hash to its effects. | Ilyas Ridhuan (@IlyasRidhuan), Santiago Palladino (@spalladino), Mike Connor (@iAmMichaelConnor) Leila Wang (@LeilaWang)  Álvaro Rodríguez (@sirasistant) | N/A | Draft | Core | 2026-09-08 |
+| 26 | Transaction Effects Tree in Block Headers | Adds a block-header commitment and membership witnesses binding each transaction hash to its effects. | Ilyas Ridhuan (@IlyasRidhuan), Santiago Palladino (@spalladino), Mike Connor (@iAmMichaelConnor) Leila Wang (@LeilaWang)  Álvaro Rodríguez (@sirasistant) | N/A | Approved | Core | 2026-09-08 |
 
 ## Abstract
 
