@@ -4,7 +4,7 @@
 
 | `azip` | `title` | `description` | `author` | `discussions-to` | `status` | `category` | `created` |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 30 | Deploy v6 With a 90% Sequencer Reward Share | Deploys the v6 rollup with `sequencerBps` 9,000 instead of 7,000, cutting redundant prover L1 spend funded by selling $AZTEC. | Koen van Marrewijk (@koenmtb1) | N/A | Draft | Economics | 2026-09-24 |
+| 30 | Deploy v6 With a 90% Sequencer Reward Share | Deploys the v6 rollup with `sequencerBps` 9,000 instead of 7,000, cutting redundant prover L1 spend funded by selling $AZTEC. | Koen van Marrewijk (@koenmtb1) | N/A | Approved | Economics | 2026-09-24 |
 
 ## Abstract
 
