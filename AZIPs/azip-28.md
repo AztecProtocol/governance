@@ -4,7 +4,7 @@
 
 | `azip` | `title` | `description` | `author` | `discussions-to` | `status` | `category` | `created` |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 29 | Protocol Nullifier Refinement | Derives the protocol nullifier from the tx request's origin, chain id, version and salt only, so a fee bump or cancellation shares it. | Mike Connor (@iAmMichaelConnor) | N/A | Draft | Core | 2026-09-21 |
+| 29 | Protocol Nullifier Refinement | Derives the protocol nullifier from the tx request's origin, chain id, version and salt only, so a fee bump or cancellation shares it. | Mike Connor (@iAmMichaelConnor) | N/A | Approved | Core | 2026-09-21 |
 
 
 ## Abstract
