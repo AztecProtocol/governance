@@ -1,82 +1,132 @@
 # AZUP-3: Aztec Network v6
 
-> **DRAFT.** The v6 payload has not been deployed. Items marked *TBD* are filled in before the payload is deployed, per the [AZUP process](../azup-process.md) (payload merged here and tagged before deployment).
-
 ## Preamble
 
-| `azup` | `title`          | `description`                                                       | `author`                             | `azips-included`                                                                                                                                                                                                | `discussions-to`                                                             | `created`  |
-| ------ | ---------------- | ------------------------------------------------------------------- | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | ---------- |
-| 3      | Aztec Network v6 | Deploys the v6 rollup and makes it canonical via a governance payload |                                      | [AZIP-22](../AZIPs/azip-22.md), [AZIP-23](../AZIPs/azip-23.md), [AZIP-24](../AZIPs/azip-24.md), [AZIP-25](../AZIPs/azip-25.md), [AZIP-26](../AZIPs/azip-26.md), [AZIP-27](../AZIPs/azip-27.md) | [AZUP-3 proposed inclusions (#60)](https://github.com/AztecProtocol/governance/issues/60) | 2026-09-21 |
+| `azup` | `title`          | `description`                                                         | `author` | `azips-included`                                                                                                                                                                                                                                                  | `discussions-to`                                                                          | `created`  |
+| ------ | ---------------- | --------------------------------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | ---------- |
+| 3      | Aztec Network v6 | Deploys the v6 rollup and makes it canonical via a governance payload |          | [AZIP-22](../AZIPs/azip-22.md), [AZIP-23](../AZIPs/azip-23.md), [AZIP-24](../AZIPs/azip-24.md), [AZIP-25](../AZIPs/azip-25.md), [AZIP-26](../AZIPs/azip-26.md), [AZIP-27](../AZIPs/azip-27.md), [AZIP-28](https://github.com/AztecProtocol/governance/pull/68), [AZIP-29](https://github.com/AztecProtocol/governance/pull/70), [AZIP-30](https://github.com/AztecProtocol/governance/pull/74) | [AZUP-3 proposed inclusions (#60)](https://github.com/AztecProtocol/governance/issues/60) | 2026-09-21 |
 
 ## Abstract
 
-AZUP-3 upgrades Aztec Network from the v5 rollup to the v6 rollup. It deploys a new `Rollup` (with its `Inbox`, `Outbox`, `FeeJuicePortal`, `Slasher`, `SlashingProposer` and `RewardBooster`), a new `HonkVerifier` and a new `EscapeHatch`, then executes a governance payload that registers the v6 rollup in the `Registry` and the `GSE` and carries the entry-queue flush incentive across. *TBD: confirm the final action list once the payload is frozen.*
+This upgrade package moves Aztec Network from the v5 rollup to a new v6 rollup that implements nine AZIPs. The v6 rollup is deployed ahead of the proposal, owned by governance and inactive. The payload then reserves 1,800,000 AZTEC for v5's remaining payouts, lowers v5's checkpoint reward from 500 to 50 AZTEC, installs v6's escape hatch, and registers v6 in the `Registry` and the `GSE`. Registration makes v6 canonical, and stake that follows the latest rollup moves to v6 without being withdrawn.
 
 ## Motivation
 
-*TBD.* See the included AZIPs. Scheduling per the tracking issue: testnet payload the week of 2026-09-21; mainnet payload after 2026-10-07.
+**Faster L1-to-L2 messaging.** Today an L1-to-L2 message waits for the Inbox tree to seal and then for a two-checkpoint lag, so it takes 24 to 108 seconds to reach L2. [AZIP-22](../AZIPs/azip-22.md) streams messages into blocks as soon as nodes see them on L1, bringing that down to about 12 to 30 seconds. Every deposit, bridge and portal flow benefits.
+
+**A way out for staking providers.** A staking provider operates the validator, but only the delegator's withdrawer can start an exit. A provider that no longer wants to run sequencers cannot end the arrangement: if it simply stops, its delegators are slashed for inactivity. [AZIP-27](../AZIPs/azip-27.md) lets the provider exit the positions it operates, while the payout still goes to the delegator. A shared rate limit stops providers from using exits to swing a governance vote.
+
+**Protocol fee capture.** Fees are priced at exactly the cost of running the network, so usage contributes nothing towards the block rewards that token holders fund through supply growth. [AZIP-23](../AZIPs/azip-23.md) adds a governance-set margin on top of cost and a governance-set recipient for it, so that usage can start to offset those rewards. The margin launches at zero, and governance can raise it in rate-limited steps.
+
+**Ready before Glamsterdam.** Ethereum's Glamsterdam fork makes the L1 transactions behind checkpoint proposals and epoch proofs materially more expensive. [AZIP-28](https://github.com/AztecProtocol/governance/pull/68) raises the fee model's L1 gas constants now, so that fees cover sequencer and prover L1 costs from the moment the fork activates, with no further governance action at the fork.
 
 ## Specification
 
-### 1. Payload / Action Details
+### 1. Included AZIPs
 
-| Item                                     | Value                                                                                                          |
-| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| **Payload / Contract / Proposal Address** | *TBD (after deployment)*                                                                                       |
-| **Repository**                           | `AztecProtocol/aztec-packages`                                                                                 |
-| **Contract / Module**                    | `l1-contracts/src/periphery/V6UpgradePayload.sol` (deploy script: `l1-contracts/script/deploy/DeployRollupForUpgradeV6.s.sol`) |
-| **Source pin**                           | *TBD: the release tag the payload and rollup are built from. Copy the payload source into `assets/azup-3/` before deployment.* |
-| **Explorer**                             | *TBD*                                                                                                          |
+| AZIP | Change in v6 |
+| --- | --- |
+| [22](../AZIPs/azip-22.md) Fast Inbox | L1-to-L2 messages stream into L2 blocks as nodes observe them, instead of waiting for a two-checkpoint lag. |
+| [23](../AZIPs/azip-23.md) Protocol Fee Margin | A governance-set margin on the mana base fee, paid to a governance-set recipient. Launches at zero. |
+| [24](../AZIPs/azip-24.md) First Prover Attribution | The rollup records which prover first proved each checkpoint. |
+| [25](../AZIPs/azip-25.md) Full Epoch Activity Score | A prover's activity score only increases on a full-epoch proof. |
+| [26](../AZIPs/azip-26.md) Transaction Effects Tree | Each block header commits to a tree of its transactions' effects. |
+| [27](../AZIPs/azip-27.md) Rate-limited Provider Exits | Staking providers can exit positions they operate, up to 5% of the validator set per 7 days. |
+| [28](https://github.com/AztecProtocol/governance/pull/68) Glamsterdam Gas Constants | L1 gas per checkpoint rises from 300,000 to 500,000, and per epoch proof from 3,600,000 to 4,000,000. |
+| [29](https://github.com/AztecProtocol/governance/pull/70) Protocol Nullifier Refinement | The protocol nullifier is derived from `(origin, chain_id, version, salt)`. |
+| [30](https://github.com/AztecProtocol/governance/pull/74) 90% Sequencer Reward Share | The sequencer share of the 500 AZTEC checkpoint reward rises from 70% to 90%. |
 
-#### Actions
+### 2. Payload / Action Details
 
-As currently written, `V6UpgradePayload.getActions()` returns, in order:
+The actions execute in this order, in one transaction.
 
-| # | Target                     | Call                                                        | Effect                                                                                                                   |
-| - | -------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| 1 | The payload itself         | `assertWithinExecutionWindow()`                             | Mainnet only: reverts unless execution is on a UK weekday between 08:00 and 17:00 London time. A rejected attempt leaves the proposal executable when the window next opens. |
-| 2 | `Registry`                 | `addRollup(v6Rollup)`                                       | Registers the v6 rollup under its version and makes it canonical.                                                        |
-| 3 | `GSE`                      | `addRollup(v6Rollup)`                                       | Lets attesters follow the upgrade without withdrawing and re-depositing stake.                                           |
-| 4 | v5 `FlushRewarder` `0x5B98cA4dcE7b59CCf241D12f81d3d2eCF14e410e` | `recover(asset, newFlushRewarder, rewardsAvailable())` | Mainnet only: moves the unowed flush-reward balance to a v6 `FlushRewarder` deployed by the payload's constructor.       |
+**Action 1: Confirm v5 is still canonical**
 
-Unlike [AZUP-2](./azup-2.md), the escape hatch is set by the deploy script while the deployer still owns the rollup, so it is not a payload action. The v5 `RewardDistributor` resolves the canonical rollup from the `Registry`, so it is not replaced.
+| Item         | Value                                                                                            |
+| ------------ | ------------------------------------------------------------------------------------------------ |
+| **Contract** | Payload                                                                                          |
+| **Function** | `assertPredecessorIsCanonical()`                                                                 |
+| **Effect**   | Reverts unless v5 is still canonical, so the payload cannot execute after any other upgrade.     |
 
-#### Protocol constants fixed by this upgrade
+**Action 2: Enforce the execution window**
 
-| Constant                          | Value                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Contract address domain separator | **Must be bumped before the v6 release candidate.** Every protocol version uses a fresh separator so the same contract address cannot exist on two rollup instances (v4: `DOM_SEP__CONTRACT_ADDRESS_V1 = 1788365517`; v5: `DOM_SEP__CONTRACT_ADDRESS_V2 = 4099338721`). v6 uses `DOM_SEP__CONTRACT_ADDRESS_V3 = 993442748` (= `hash_to_u32("az_dom_sep", "contract_address_v3")`). As of 2026-09-21 this is a draft PR against `next` in aztec-packages (#25521), not yet merged; every v6 contract address, including the standard contracts' canonical addresses and the genesis roots, moves with it. *TBD: confirm merged and update if the value changes.* |
-| Rollup version                    | *TBD (derived from the deployed configuration)*                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| VK tree root                      | *TBD (from the v6 protocol circuits build)*                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| Protocol contracts hash           | *TBD (from the v6 protocol circuits build)*                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| Default public-setup allowlist    | *TBD: list the contract instances and functions, including which standard `AuthRegistry` instance is canonical (see [AZUP-2](./azup-2.md) open question 1).*                                                                                                                                                                                                                                                                                                                                       |
-| Protocol fee margin ([AZIP-23](../AZIPs/azip-23.md)) | *TBD — decision required.* The v6 rollup launches with `protocolFeeMargin = 0` and a placeholder recipient; both are owner-only, so after the deploy script hands ownership to governance they can only be set by a payload. Either this payload sets the recipient and then the margin (in that order), or this AZUP states that the margin ships disabled and a later AZUP activates it.                                                                                                              |
+| Item         | Value                                                                                  |
+| ------------ | -------------------------------------------------------------------------------------- |
+| **Contract** | Payload                                                                                |
+| **Function** | `assertWithinExecutionWindow()`                                                        |
+| **Effect**   | Reverts unless execution falls on a UK weekday between 08:00 and 17:00 London time.    |
 
-### 2. Sequencer Configuration (for signaling)
+**Action 3: Reserve rewards for v5**
 
-Once the payload is deployed, sequencers signal by setting:
+| Item         | Value                                                                                                                   |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| **Contract** | RewardDistributor, then Payload                                                                                          |
+| **Function** | `recoverFrom(v5, payload, amount)`, then `forwardEarmark()`                                                              |
+| **Effect**   | Reserves 1,800,000 AZTEC in the RewardDistributor for v5, so v5 can still pay out rewards after it stops being canonical. |
 
-```
-GOVERNANCE_PROPOSER_PAYLOAD_ADDRESS=<TBD>
-```
+**Action 4: Lower v5's checkpoint reward**
 
-### 3. Testnet (Sepolia)
+| Item         | Value                                                                                   |
+| ------------ | --------------------------------------------------------------------------------------- |
+| **Contract** | Rollup v5                                                                               |
+| **Function** | `setRewardConfig({ sequencerBps: 7000, checkpointReward: 50e18 })`                       |
+| **Effect**   | Lowers v5's checkpoint reward from 500 to 50 AZTEC for the checkpoints it settles after the upgrade. The 70/30 split is unchanged. |
 
-*TBD after the testnet deployment.* On Sepolia the execution-window action and the flush-rewarder migration are omitted (no window enforcement; no flush rewarder to migrate).
+**Action 5: Install the v6 escape hatch**
+
+| Item         | Value                                                |
+| ------------ | ---------------------------------------------------- |
+| **Contract** | Rollup v6                                            |
+| **Function** | `setEscapeHatch(escapeHatch)`                        |
+| **Effect**   | Installs v6's escape hatch. It can only be set once. |
+
+**Action 6: Make v6 canonical**
+
+| Item         | Value                                                                               |
+| ------------ | ----------------------------------------------------------------------------------- |
+| **Contract** | Registry                                                                            |
+| **Function** | `addRollup(v6)`                                                                     |
+| **Effect**   | Registers v6 and makes it the canonical rollup. The RewardDistributor follows it.   |
+
+**Action 7: Move stake to v6**
+
+| Item         | Value                                                                                                                    |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| **Contract** | GSE                                                                                                                      |
+| **Function** | `addRollup(v6)`                                                                                                          |
+| **Effect**   | Stake that follows the latest rollup moves to v6 without being withdrawn. Stake deposited directly into v5 stays there.  |
+
+**Action 8: Migrate the entry-queue flush incentive**
+
+| Item         | Value                                                                                              |
+| ------------ | -------------------------------------------------------------------------------------------------- |
+| **Contract** | FlushRewarder v5                                                                                   |
+| **Function** | `recover(asset, newFlushRewarder, rewardsAvailable())`                                             |
+| **Effect**   | Moves the unowed flush-reward balance to v6's FlushRewarder. Rewards already owed stay claimable.  |
+
+The payload does not change the protocol fee margin (AZIP-23), which launches at zero and needs a separate proposal to change. It does not renounce ownership of v5.
 
 ## Impact Evaluation
 
-*TBD.*
+**Sequencers** — Must run v6 software. Stake that follows the latest rollup moves to v6 at execution, and its first v6 duties begin two to three epochs later. The default sequencer reward rises from 350 to 450 AZTEC per checkpoint.
+
+**Provers** — The block-reward prover pool falls from 150 to 50 AZTEC per checkpoint; fee-based prover revenue is unchanged. Activity scores only increase on full-epoch proofs.
+
+**Tokenholders** — Emissions are unchanged at 500 AZTEC per checkpoint, with more of it going to sequencers. Governance gains a fee margin to set in a later proposal. Staking providers can exit delegated positions, within the rate limit.
+
+**App Developers & Infrastructure Providers** — v6 is a new rollup: contracts must be recompiled, and class ids and addresses change. L1-to-L2 messages arrive in seconds rather than minutes, and contracts can prove transaction effects against a block header. L2 fees rise slightly with the Glamsterdam gas constants.
 
 ## Security & Audits
 
-*TBD.* Note for reviewers: the payload's execution window uses on-chain weekday/BST arithmetic; it should be covered by a unit test before deployment, since the deploy script's fork simulation is the only thing that currently exercises the payload.
+**Only the approved transition**: The payload checks at execution that v5 is still canonical, so it cannot demote a rollup registered after it was deployed.
 
-## Open Questions and Feedback
+**Atomicity**: `Governance.execute` requires every action to succeed within one transaction. A failed check leaves nothing changed.
 
-1. The contract address domain separator bump (V3 = 993442748, aztec-packages #25521) is a draft PR and must merge before the v6 release candidate is cut.
-2. Does this AZUP activate the protocol fee margin ([AZIP-23](../AZIPs/azip-23.md)) or only ship the mechanism?
-3. Which standard `AuthRegistry` instance is canonical for the public-setup allowlist?
+**Ordering**: Action 3 must run before Action 6, because once v6 is registered, v5 can no longer draw on the RewardDistributor's pool. Action 4 also runs before it, so the lower reward applies to everything v5 settles after the upgrade.
+
+**Testing**: The payload has unit tests for its actions, constructor and execution window, a scenario test that executes it through governance and checks atomicity, and a fork simulation of the full lifecycle.
+
+**Audits**: *TBD.*
 
 ## Copyright Waiver
 
