@@ -4,11 +4,11 @@
 
 | `azup` | `title`          | `description`                                                         | `author` | `azips-included`                                                                                                                                                                                                                                                  | `discussions-to`                                                                          | `created`  |
 | ------ | ---------------- | --------------------------------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | ---------- |
-| 3      | Aztec Network v6 | Deploys the v6 rollup and makes it canonical via a governance payload |          | [AZIP-22](../AZIPs/azip-22.md), [AZIP-23](../AZIPs/azip-23.md), [AZIP-24](../AZIPs/azip-24.md), [AZIP-25](../AZIPs/azip-25.md), [AZIP-26](../AZIPs/azip-26.md), [AZIP-27](../AZIPs/azip-27.md), [AZIP-28](https://github.com/AztecProtocol/governance/pull/68), [AZIP-29](https://github.com/AztecProtocol/governance/pull/70), [AZIP-30](https://github.com/AztecProtocol/governance/pull/74), [AZIP-31](https://github.com/AztecProtocol/governance/pull/77) | [AZUP-3 proposed inclusions (#60)](https://github.com/AztecProtocol/governance/issues/60) | 2026-09-21 |
+| 3      | Aztec Network v6 | Deploys the v6 rollup and makes it canonical via a governance payload |          | [AZIP-22](../AZIPs/azip-22.md), [AZIP-23](../AZIPs/azip-23.md), [AZIP-24](../AZIPs/azip-24.md), [AZIP-25](../AZIPs/azip-25.md), [AZIP-26](../AZIPs/azip-26.md), [AZIP-27](../AZIPs/azip-27.md), [AZIP-28](https://github.com/AztecProtocol/governance/pull/68), [AZIP-29](https://github.com/AztecProtocol/governance/pull/70), [AZIP-30](https://github.com/AztecProtocol/governance/pull/74), [AZIP-31](https://github.com/AztecProtocol/governance/pull/77), [AZIP-33](https://github.com/AztecProtocol/governance/pull/79) | [AZUP-3 proposed inclusions (#60)](https://github.com/AztecProtocol/governance/issues/60) | 2026-09-21 |
 
 ## Abstract
 
-This upgrade package moves Aztec Network from the v5 rollup to a new v6 rollup that implements ten AZIPs. The v6 rollup is deployed ahead of the proposal, owned by governance and inactive. The payload then reserves 1,800,000 AZTEC for v5's remaining payouts, lowers v5's checkpoint reward from 500 to 50 AZTEC, installs v6's escape hatch, and registers v6 in the `Registry` and the `GSE`. Registration makes v6 canonical, and stake that follows the latest rollup moves to v6 without being withdrawn.
+This upgrade package moves Aztec Network from the v5 rollup to a new v6 rollup that implements ten AZIPs. The v6 rollup is deployed ahead of the proposal, owned by governance and inactive. The payload then reserves 1,800,000 AZTEC for v5's remaining payouts, lowers v5's checkpoint reward from 500 to 50 AZTEC, installs v6's escape hatch, and registers v6 in the `Registry` and the `GSE`. It also raises the GSE's proof-of-possession gas cap from 250,000 to 300,000. Registration makes v6 canonical, and stake that follows the latest rollup moves to v6 without being withdrawn.
 
 ## Motivation
 
@@ -21,6 +21,8 @@ This upgrade package moves Aztec Network from the v5 rollup to a new v6 rollup t
 **Ready before Glamsterdam.** Ethereum's Glamsterdam fork makes the L1 transactions behind checkpoint proposals and epoch proofs materially more expensive. [AZIP-28](https://github.com/AztecProtocol/governance/pull/68) raises the fee model's L1 gas constants now, so that fees cover sequencer and prover L1 costs from the moment the fork activates, with no further governance action at the fork.
 
 **Reward policy without a redeploy.** Every proposer earns the same sequencer reward, and changing how rewards are computed means deploying a new rollup. [AZIP-31](https://github.com/AztecProtocol/governance/pull/77) lets governance point the rollup at a separate reward calculator contract instead, so a future reward policy can ship without a rollup upgrade. A calculator that fails or misbehaves falls back to the default reward and can never block a proof.
+
+**Valid validator keys that fit the gas cap.** The GSE checks each new validator's BLS key within a 250,000 gas cap, and the cost of that check varies by key. Osaka made the check more expensive, and the cap was not raised with it, so about 1 in 28,559 honestly generated keys is now rejected at registration, against about 1 in 4.2 million before. [AZIP-33](https://github.com/AztecProtocol/governance/pull/79) raises the cap to 300,000, which brings the rate back to about 1 in 2.5 million.
 
 ## Specification
 
@@ -38,6 +40,7 @@ This upgrade package moves Aztec Network from the v5 rollup to a new v6 rollup t
 | [29](https://github.com/AztecProtocol/governance/pull/70) Protocol Nullifier Refinement | The protocol nullifier is derived from `(origin, chain_id, version, salt)`. |
 | [30](https://github.com/AztecProtocol/governance/pull/74) 90% Sequencer Reward Share | The sequencer share of the 500 AZTEC checkpoint reward rises from 70% to 90%. |
 | [31](https://github.com/AztecProtocol/governance/pull/77) Pluggable Sequencer Reward Calculator | The rollup can call a governance-set contract to set each proposer's sequencer reward. v6 launches with none set, so every proposer earns the default. |
+| [33](https://github.com/AztecProtocol/governance/pull/79) Proof-of-Possession Gas Cap | The payload raises the GSE's proof-of-possession gas cap from 250,000 to 300,000. No contract code changes. |
 
 ### 2. Payload / Action Details
 
@@ -107,11 +110,19 @@ The actions execute in this order, in one transaction.
 | **Function** | `recover(asset, newFlushRewarder, rewardsAvailable())`                                             |
 | **Effect**   | Moves the unowed flush-reward balance to v6's FlushRewarder. Rewards already owed stay claimable.  |
 
+**Action 9: Raise the proof-of-possession gas cap**
+
+| Item         | Value                                                                                                                         |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| **Contract** | GSE                                                                                                                           |
+| **Function** | `setProofOfPossessionGasLimit(300_000)`                                                                                       |
+| **Effect**   | Raises the gas cap for verifying a new validator's BLS proof of possession from 250,000 to 300,000, for every rollup on the GSE. |
+
 The payload does not change the protocol fee margin (AZIP-23), which launches at zero and needs a separate proposal to change. v6 is deployed with no sequencer reward calculator (AZIP-31), and any reward policy that uses one needs its own AZIP and AZUP. The payload does not renounce ownership of v5.
 
 ## Impact Evaluation
 
-**Sequencers** — Must run v6 software. Stake that follows the latest rollup moves to v6 at execution, and its first v6 duties begin two to three epochs later. The default sequencer reward rises from 350 to 450 AZTEC per checkpoint, and every proposer earns it until governance sets a reward calculator.
+**Sequencers** — Must run v6 software. Stake that follows the latest rollup moves to v6 at execution, and its first v6 duties begin two to three epochs later. The default sequencer reward rises from 350 to 450 AZTEC per checkpoint, and every proposer earns it until governance sets a reward calculator. Valid new BLS keys are far less likely to be rejected at registration.
 
 **Provers** — The block-reward prover pool falls from 150 to 50 AZTEC per checkpoint; fee-based prover revenue is unchanged. Activity scores only increase on full-epoch proofs.
 
