@@ -4,11 +4,11 @@
 
 | `azup` | `title`          | `description`                                                         | `author` | `azips-included`                                                                                                                                                                                                                                                  | `discussions-to`                                                                          | `created`  |
 | ------ | ---------------- | --------------------------------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | ---------- |
-| 3      | Aztec Network v6 | Deploys the v6 rollup and makes it canonical via a governance payload |          | [AZIP-22](../AZIPs/azip-22.md), [AZIP-23](../AZIPs/azip-23.md), [AZIP-24](../AZIPs/azip-24.md), [AZIP-25](../AZIPs/azip-25.md), [AZIP-26](../AZIPs/azip-26.md), [AZIP-27](../AZIPs/azip-27.md), [AZIP-28](https://github.com/AztecProtocol/governance/pull/68), [AZIP-29](https://github.com/AztecProtocol/governance/pull/70), [AZIP-30](https://github.com/AztecProtocol/governance/pull/74), [AZIP-31](https://github.com/AztecProtocol/governance/pull/77), [AZIP-33](https://github.com/AztecProtocol/governance/pull/79), [AZIP-34](https://github.com/AztecProtocol/governance/pull/81) | [AZUP-3 proposed inclusions (#60)](https://github.com/AztecProtocol/governance/issues/60) | 2026-09-21 |
+| 3      | Aztec Network v6 | Deploys the v6 rollup and makes it canonical via a governance payload | Amin Sammara (@aminsammara) | [AZIP-22](../AZIPs/azip-22.md), [AZIP-23](../AZIPs/azip-23.md), [AZIP-24](../AZIPs/azip-24.md), [AZIP-25](../AZIPs/azip-25.md), [AZIP-26](../AZIPs/azip-26.md), [AZIP-27](../AZIPs/azip-27.md), [AZIP-29](../AZIPs/azip-28.md), [AZIP-30](../AZIPs/azip-30.md), [AZIP-31](https://github.com/AztecProtocol/governance/pull/77), [AZIP-33](https://github.com/AztecProtocol/governance/pull/79), [AZIP-34](https://github.com/AztecProtocol/governance/pull/81), [AZIP-35](https://github.com/AztecProtocol/governance/pull/68) | [AZUP-3 proposed inclusions (#60)](https://github.com/AztecProtocol/governance/issues/60) | 2026-09-21 |
 
 ## Abstract
 
-This upgrade package moves Aztec Network from the v5 rollup to a new v6 rollup that implements ten AZIPs. The v6 rollup is deployed ahead of the proposal, owned by governance and inactive. The payload then reserves 1,800,000 AZTEC for v5's remaining payouts, lowers v5's checkpoint reward from 500 to 50 AZTEC, installs v6's escape hatch, and registers v6 in the `Registry` and the `GSE`. It also raises the GSE's proof-of-possession gas cap from 250,000 to 300,000. Registration makes v6 canonical, and stake that follows the latest rollup moves to v6 without being withdrawn.
+This upgrade package moves Aztec Network from the v5 rollup to a new v6 rollup that implements ten AZIPs, and its payload carries out two more ([AZIP-33](https://github.com/AztecProtocol/governance/pull/79) and [AZIP-34](https://github.com/AztecProtocol/governance/pull/81)). The v6 rollup is deployed ahead of the proposal, owned by governance and inactive. The payload then reserves 1,800,000 AZTEC for v5's remaining payouts, lowers v5's checkpoint reward from 500 to 50 AZTEC, installs v6's escape hatch, and registers v6 in the `Registry` and the `GSE`. It also raises the GSE's proof-of-possession gas cap from 250,000 to 300,000. Registration makes v6 canonical, and stake that follows the latest rollup moves to v6 without being withdrawn.
 
 ## Motivation
 
@@ -18,7 +18,7 @@ This upgrade package moves Aztec Network from the v5 rollup to a new v6 rollup t
 
 **Protocol fee capture.** Fees are priced at exactly the cost of running the network, so usage contributes nothing towards the block rewards that token holders fund through supply growth. [AZIP-23](../AZIPs/azip-23.md) adds a governance-set margin on top of cost and a governance-set recipient for it, so that usage can start to offset those rewards. The margin launches at zero, and governance can raise it in rate-limited steps.
 
-**Ready before Glamsterdam.** Ethereum's Glamsterdam fork makes the L1 transactions behind checkpoint proposals and epoch proofs materially more expensive. [AZIP-28](https://github.com/AztecProtocol/governance/pull/68) raises the fee model's L1 gas constants now, so that fees cover sequencer and prover L1 costs from the moment the fork activates, with no further governance action at the fork.
+**Ready before Glamsterdam.** Ethereum's Glamsterdam fork makes the L1 transactions behind checkpoint proposals and epoch proofs materially more expensive. [AZIP-35](https://github.com/AztecProtocol/governance/pull/68) raises the fee model's L1 gas constants now, so that fees cover sequencer and prover L1 costs from the moment the fork activates, with no further governance action at the fork.
 
 **Reward policy without a redeploy.** Every proposer earns the same sequencer reward, and changing how rewards are computed means deploying a new rollup. [AZIP-31](https://github.com/AztecProtocol/governance/pull/77) lets governance point the rollup at a separate reward calculator contract instead, so a future reward policy can ship without a rollup upgrade. A calculator that fails or misbehaves falls back to the default reward and can never block a proof.
 
@@ -38,14 +38,23 @@ This upgrade package moves Aztec Network from the v5 rollup to a new v6 rollup t
 | [25](../AZIPs/azip-25.md) Full Epoch Activity Score | A prover's activity score only increases on a full-epoch proof. |
 | [26](../AZIPs/azip-26.md) Transaction Effects Tree | Each block header commits to a tree of its transactions' effects. |
 | [27](../AZIPs/azip-27.md) Rate-limited Provider Exits | Staking providers can exit positions they operate, up to 5% of the validator set per 7 days. |
-| [28](https://github.com/AztecProtocol/governance/pull/68) Glamsterdam Gas Constants | L1 gas per checkpoint rises from 300,000 to 500,000, and per epoch proof from 3,600,000 to 4,000,000. |
-| [29](https://github.com/AztecProtocol/governance/pull/70) Protocol Nullifier Refinement | The protocol nullifier is derived from `(origin, chain_id, version, salt)`. |
-| [30](https://github.com/AztecProtocol/governance/pull/74) 90% Sequencer Reward Share | The sequencer share of the 500 AZTEC checkpoint reward rises from 70% to 90%. |
+| [29](../AZIPs/azip-28.md) Protocol Nullifier Refinement | The protocol nullifier is derived from `(origin, chain_id, version, salt)`. |
+| [30](../AZIPs/azip-30.md) 90% Sequencer Reward Share | The sequencer share of the 500 AZTEC checkpoint reward rises from 70% to 90%. |
 | [31](https://github.com/AztecProtocol/governance/pull/77) Pluggable Sequencer Reward Calculator | The rollup can call a governance-set contract to set each proposer's sequencer reward. v6 launches with none set, so every proposer earns the default. |
 | [33](https://github.com/AztecProtocol/governance/pull/79) Proof-of-Possession Gas Cap | The payload raises the GSE's proof-of-possession gas cap from 250,000 to 300,000. No contract code changes. |
 | [34](https://github.com/AztecProtocol/governance/pull/81) Sustain v5 After v6 | The payload earmarks 1,800,000 AZTEC for v5 and cuts its checkpoint reward from 500 to 50 AZTEC, so v5 stays sequenced and proven for 30 days. |
+| [35](https://github.com/AztecProtocol/governance/pull/68) Glamsterdam Gas Constants | L1 gas per checkpoint rises from 300,000 to 500,000, and per epoch proof from 3,600,000 to 4,000,000. |
 
 ### 2. Payload / Action Details
+
+| Item                                      | Value                                                                                          |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| **Payload / Contract / Proposal Address** | *TBD: deployed before the proposal.*                                                           |
+| **Repository**                            | `AztecProtocol/aztec-packages`, *v6 release branch TBD*                                        |
+| **Contract / Module**                     | `l1-contracts/src/periphery/V6UpgradePayload.sol`, deployed by `l1-contracts/script/deploy/DeployRollupForUpgradeV6.s.sol` |
+| **Explorer**                              | *TBD: verified on Etherscan at deployment.*                                                    |
+
+The deploy script deploys the v6 rollup verifier, the v6 `Rollup` (which constructs its `Inbox`, `Outbox`, `FeeJuicePortal`, `Slasher` and `RewardBooster`), the v6 `EscapeHatch` and the payload. The rollup verifier is pinned in the repository at `l1-contracts/script/deploy/HonkVerifier.sol`, built from the same protocol circuits as the v6 node software, and the genesis roots in the script's configuration come from that same build. Anyone can deploy from a clean clone without building the circuits, and can check the verifier's `VK_HASH` constant in the verified source on Etherscan.
 
 The actions execute in this order, in one transaction.
 
@@ -123,6 +132,20 @@ The actions execute in this order, in one transaction.
 
 The payload does not change the protocol fee margin (AZIP-23), which launches at zero and needs a separate proposal to change. v6 is deployed with no sequencer reward calculator (AZIP-31), and any reward policy that uses one needs its own AZIP and AZUP. The payload does not renounce ownership of v5.
 
+### 3. Sequencer Configuration (for signaling)
+
+Sequencers signal for the proposal by setting the payload address and restarting:
+
+```
+GOVERNANCE_PROPOSER_PAYLOAD_ADDRESS=<payload address, TBD>
+```
+
+Each slot's proposer then signals for the payload in the `GovernanceProposer`. Once a round reaches quorum, anyone can submit it to `Governance` as a proposal.
+
+### 4. Testnet (Sepolia)
+
+*TBD: the payload will be executed on Sepolia before the mainnet proposal; addresses and the proposal id will be recorded here.*
+
 ## Impact Evaluation
 
 **Sequencers** — Must run v6 software. Stake that follows the latest rollup moves to v6 at execution, and its first v6 duties begin two to three epochs later. The default sequencer reward rises from 350 to 450 AZTEC per checkpoint, and every proposer earns it until governance sets a reward calculator. Valid new BLS keys are far less likely to be rejected at registration. Sequencers whose stake stays on v5 earn 35 AZTEC per checkpoint there, from the earmark, until it runs out.
@@ -144,6 +167,11 @@ The payload does not change the protocol fee margin (AZIP-23), which launches at
 **Testing**: The payload has unit tests for its actions, constructor and execution window, a scenario test that executes it through governance and checks atomicity, and a fork simulation of the full lifecycle.
 
 **Audits**: *TBD.*
+
+## Open Questions and Feedback
+
+- `initialEthPerFeeAsset`, the starting ETH price of the fee asset, is a point-in-time market value and will be refreshed in the deploy script's configuration immediately before the mainnet deployment.
+- [AZIP-31](https://github.com/AztecProtocol/governance/pull/77), [AZIP-33](https://github.com/AztecProtocol/governance/pull/79), [AZIP-34](https://github.com/AztecProtocol/governance/pull/81) and [AZIP-35](https://github.com/AztecProtocol/governance/pull/68) are still under review. Feedback on them is welcome in their pull requests.
 
 ## Copyright Waiver
 
