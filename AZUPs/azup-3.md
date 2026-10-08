@@ -37,7 +37,7 @@ This upgrade package moves Aztec Network from the v5 rollup to a new v6 rollup t
 | [24](../AZIPs/azip-24.md) First Prover Attribution | The rollup records which prover first proved each checkpoint. |
 | [25](../AZIPs/azip-25.md) Full Epoch Activity Score | A prover's activity score only increases on a full-epoch proof. |
 | [26](../AZIPs/azip-26.md) Transaction Effects Tree | Each block header commits to a tree of its transactions' effects. |
-| [27](../AZIPs/azip-27.md) Rate-limited Provider Exits | Staking providers can exit positions they operate, up to 5% of the validator set per 7 days. |
+| [27](../AZIPs/azip-27.md) Rate-limited Provider Exits | Staking providers can exit positions they operate, up to 5% of the remaining validator set within Governance's withdrawal delay (about 9.6 days today). |
 | [29](../AZIPs/azip-28.md) Protocol Nullifier Refinement | The protocol nullifier is derived from `(origin, chain_id, version, salt)`. |
 | [30](../AZIPs/azip-30.md) 90% Sequencer Reward Share | The sequencer share of the 500 AZTEC checkpoint reward rises from 70% to 90%. |
 | [31](https://github.com/AztecProtocol/governance/pull/77) Pluggable Sequencer Reward Calculator | The rollup can call a governance-set contract to set each proposer's sequencer reward. v6 launches with none set, so every proposer earns the default. |
