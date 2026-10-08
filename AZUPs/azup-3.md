@@ -168,11 +168,6 @@ Each slot's proposer then signals for the payload in the `GovernanceProposer`. O
 
 **Audits**: *TBD.*
 
-## Open Questions and Feedback
-
-- `initialEthPerFeeAsset`, the starting ETH price of the fee asset, is a point-in-time market value and will be refreshed in the deploy script's configuration immediately before the mainnet deployment.
-- [AZIP-31](https://github.com/AztecProtocol/governance/pull/77), [AZIP-33](https://github.com/AztecProtocol/governance/pull/79), [AZIP-34](https://github.com/AztecProtocol/governance/pull/81) and [AZIP-35](https://github.com/AztecProtocol/governance/pull/68) are still under review. Feedback on them is welcome in their pull requests.
-
 ## Copyright Waiver
 
 Copyright and related rights waived via [CC0](/LICENSE).
