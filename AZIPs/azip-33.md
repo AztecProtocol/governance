@@ -4,7 +4,7 @@
 
 | `azip` | `title` | `description` | `author` | `discussions-to` | `status` | `category` | `created` |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 33 | Raise the GSE Proof-of-Possession Gas Cap to 300k | Raises the GSE proof-of-possession gas cap from 250,000 to 300,000 to account for Osaka's modexp repricing. | Santiago Palladino (@spalladino, santiago@aztec-labs.com) | N/A | Draft | Core | 2026-10-05 |
+| 33 | Raise the GSE Proof-of-Possession Gas Cap to 300k | Raises the GSE proof-of-possession gas cap from 250,000 to 300,000 to account for Osaka's modexp repricing. | Santiago Palladino (@spalladino, santiago@aztec-labs.com) | N/A | Accepted | Core | 2026-10-05 |
 
 ## Abstract
 
