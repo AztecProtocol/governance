@@ -4,7 +4,7 @@
 
 | `azip` | `title` | `description` | `author` | `discussions-to` | `status` | `category` | `created` | `requires` |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 34 | Sustain the v5 Rollup After v6 Becomes Canonical | Cuts the v5 `checkpointReward` to 50 AZTEC and earmarks 1.8M AZTEC so v5 keeps being sequenced and proven for 30 days after v6. | Koen van Marrewijk (@koenmtb1) | N/A | Draft | Economics | 2026-10-06 | [AZIP-2](./azip-2.md) |
+| 34 | Sustain the v5 Rollup After v6 Becomes Canonical | Cuts the v5 `checkpointReward` to 50 AZTEC and earmarks 1.8M AZTEC so v5 keeps being sequenced and proven for 30 days after v6. | Koen van Marrewijk (@koenmtb1) | N/A | Accepted | Economics | 2026-10-06 | [AZIP-2](./azip-2.md) |
 
 ## Abstract
 
