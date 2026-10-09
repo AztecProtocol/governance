@@ -4,7 +4,7 @@
 
 | `azip` | `title` | `description` | `author` | `discussions-to` | `status` | `category` | `created` |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 31 | Pluggable Sequencer Reward Calculator | Moves per-proposer sequencer reward policy out of the rollup into a governance-set calculator contract called once per epoch proof. | Zac Williamson <zac@aztec.foundation>, Santiago Palladino (@spalladino, santiago@aztec-labs.com) | https://github.com/AztecProtocol/governance/discussions/75 | Draft | Core | 2026-10-01 |
+| 31 | Pluggable Sequencer Reward Calculator | Moves per-proposer sequencer reward policy out of the rollup into a governance-set calculator contract called once per epoch proof. | Zac Williamson <zac@aztec.foundation>, Santiago Palladino (@spalladino, santiago@aztec-labs.com) | https://github.com/AztecProtocol/governance/discussions/75 | Accepted | Core | 2026-10-01 |
 
 ## Abstract
 
