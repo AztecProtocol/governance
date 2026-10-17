@@ -104,6 +104,14 @@ Each AZIP should have the following parts:
 
 Throughout the process, AZIP author(s) are responsible for building community consensus, collecting and implementing technical feedback, and interfacing with AZIP editors. 
 
+### Self-check before editor review
+
+Before requesting an editor review on a PR, authors should run the `azip-editor-review` skill against their PR. The skill lives at `.claude/skills/azip-editor-review/` and runs the same administrative checklist an editor will (preamble fields, required sections per category, style and markup, linked discussion in `azip-proposals`). It outputs a copy-pasteable list of changes needed.
+
+The skill performs no substantive evaluation — it doesn't judge whether the proposal is a good idea — and it doesn't replace the editor's review. Its purpose is to surface the formatting and process gaps that would otherwise come back as editor comments, so the first round with an editor can focus on anything the skill couldn't check.
+
+Editors use the same skill when conducting the review.
+
 ### Transferring AZIP Ownership
 
 Transferring ownership of an AZIP to a new champion may occasionally be necessary. In general, the original author should remain a co-author, but this is at the discretion of the original author. Appropriate reasons for a transfer include the original author no longer having the time or interest to maintain the AZIP, or being unreachable and unable to respond to feedback or change requests. Disagreement with the current direction of an AZIP is not, by itself, a sufficient reason for a transfer; in such cases, contributors are encouraged to seek consensus or, if that is not possible, submit a competing AZIP.
